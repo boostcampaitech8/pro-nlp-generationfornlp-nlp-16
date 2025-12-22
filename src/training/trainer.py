@@ -25,6 +25,9 @@ def get_sft_config(
     evaluation_strategy: str = "epoch",
     save_total_limit: int = 2,
     lr_scheduler_type: str = "cosine",
+    load_best_model_at_end: bool = True,
+    metric_for_best_model: str = "f1",
+    greater_is_better: bool = True,
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -46,6 +49,9 @@ def get_sft_config(
         save_total_limit=save_total_limit,
         save_only_model=True,
         report_to="none",
+        load_best_model_at_end=load_best_model_at_end,       
+        metric_for_best_model=metric_for_best_model,       
+        greater_is_better=greater_is_better,
     )
     return sft_config
 
