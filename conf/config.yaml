@@ -1,0 +1,18 @@
+defaults:
+  - model: gemma
+  - training: default
+  - inference: default
+  - _self_
+
+seed: 42
+data:
+  train_path: "data/train.csv"
+  test_path: "data/test.csv"
+  max_length: 1024
+  test_size: 0.1
+
+hydra:
+  job:
+    chdir: true 
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
