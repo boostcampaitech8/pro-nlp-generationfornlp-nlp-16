@@ -99,7 +99,8 @@ def main(cfg: DictConfig):
 
     # Load model
     print("Loading model from checkpoint...")
-    model, tokenizer = load_model_for_inference(checkpoint_path)
+    torch_dtype = cfg.inference.get('torch_dtype', 'float16')  # default to float16
+    model, tokenizer = load_model_for_inference(checkpoint_path, torch_dtype=torch_dtype)
 
     # Load and preprocess test data
     print("Loading test data...")

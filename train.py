@@ -59,7 +59,8 @@ def main(cfg: DictConfig):
 
     # Load model and tokenizer
     print("Loading model and tokenizer...")
-    model, tokenizer = load_model_and_tokenizer(cfg.model.name)
+    torch_dtype = cfg.model.get('torch_dtype', 'float16')  # default to float16
+    model, tokenizer = load_model_and_tokenizer(cfg.model.name, torch_dtype=torch_dtype)
 
     # Tokenize dataset
     print("Tokenizing dataset...")
@@ -101,6 +102,9 @@ def main(cfg: DictConfig):
         evaluation_strategy=cfg.training.evaluation_strategy,
         save_total_limit=cfg.training.save_total_limit,
         lr_scheduler_type=cfg.training.lr_scheduler_type,
+        fp16=cfg.training.get('fp16', False),
+        gradient_accumulation_steps=cfg.training.get('gradient_accumulation_steps', 1),
+        gradient_checkpointing=cfg.training.get('gradient_checkpointing', False),
     )
 
     # Get metrics functions

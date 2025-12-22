@@ -25,6 +25,9 @@ def get_sft_config(
     evaluation_strategy: str = "epoch",
     save_total_limit: int = 2,
     lr_scheduler_type: str = "cosine",
+    fp16: bool = False,
+    gradient_accumulation_steps: int = 1,
+    gradient_checkpointing: bool = False,
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -44,6 +47,9 @@ def get_sft_config(
         save_strategy=save_strategy,
         evaluation_strategy=evaluation_strategy,
         save_total_limit=save_total_limit,
+        fp16=fp16,  # V100에서 float16 mixed precision
+        gradient_accumulation_steps=gradient_accumulation_steps,  # 메모리 효율성
+        gradient_checkpointing=gradient_checkpointing,  # 메모리 절약
         save_only_model=True,
         report_to="none",
     )

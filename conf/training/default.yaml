@@ -8,3 +8,6 @@ save_strategy: "epoch"
 evaluation_strategy: "epoch"
 save_total_limit: 2
 lr_scheduler_type: "cosine"
+fp16: true  # V100에서 float16 mixed precision training 활성화
+gradient_accumulation_steps: 8  # 메모리 효율성을 위한 gradient accumulation
+gradient_checkpointing: true  # 메모리 절약을 위한 gradient checkpointing
