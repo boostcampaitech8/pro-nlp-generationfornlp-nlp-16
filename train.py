@@ -1,0 +1,130 @@
+"""
+Korean SAT Solver - Training Script
+"""
+import pandas as pd
+from datasets import Dataset
+import hydra
+from omegaconf import DictConfig, OmegaConf
+from hydra.core.hydra_config import HydraConfig
+from src.utils import set_seed
+from src.data import (
+    load_train_data,
+    add_full_question,
+    dataframe_to_dataset,
+    process_train_dataset,
+    tokenize_dataset,
+)
+from src.model import (
+    load_model_and_tokenizer,
+    get_peft_config,
+    setup_tokenizer_for_training,
+)
+from src.training import (
+    get_data_collator,
+    get_sft_config,
+    get_trainer,
+    get_metrics_functions,
+)
+
+# After print -> logging으로 변경 Plz
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig):
+    # 로깅용
+    print(OmegaConf.to_yaml(cfg))
+    
+    # 현재 실행 중인 실험의 저장 경로 가져오기
+    output_dir = HydraConfig.get().runtime.output_dir
+    print(f"Saving outputs to: {output_dir}")
+
+    # =====================
+    # Set seed
+    set_seed(cfg.seed)
+
+    print("Loading training data...")
+    # Hydra changes cwd, so we need absolute path
+    train_data_path = hydra.utils.to_absolute_path(cfg.data.train_path)
+    df = load_train_data(train_data_path)
+    df = add_full_question(df)
+
+    print(f"Dataset size: {len(df)}")
+    print(f"Missing values:\n{df.isnull().sum()}")
+
+    # Convert to HuggingFace Dataset
+    dataset = dataframe_to_dataset(df)
+
+    # Process dataset to chat format
+    print("Processing dataset...")
+    processed_dataset = process_train_dataset(dataset)
+    processed_dataset = Dataset.from_pandas(pd.DataFrame(processed_dataset))
+
+    # Load model and tokenizer
+    print("Loading model and tokenizer...")
+    model, tokenizer = load_model_and_tokenizer(cfg.model.name)
+
+    # Tokenize dataset
+    print("Tokenizing dataset...")
+    train_dataset, eval_dataset = tokenize_dataset(
+        processed_dataset,
+        tokenizer,
+        max_length=cfg.data.max_length,
+        test_size=cfg.data.test_size,
+        seed=cfg.seed,
+    )
+
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Eval dataset size: {len(eval_dataset)}")
+    print(f"Sample: {tokenizer.decode(train_dataset[0]['input_ids'], skip_special_tokens=True)}")
+
+    # Setup training
+    tokenizer = setup_tokenizer_for_training(tokenizer)
+
+    # Get configurations
+    peft_config = get_peft_config(
+        r=cfg.model.peft.r,
+        lora_alpha=cfg.model.peft.lora_alpha,
+        lora_dropout=cfg.model.peft.lora_dropout,
+        target_modules=OmegaConf.to_container(cfg.model.peft.target_modules, resolve=True),
+        bias=cfg.model.peft.bias,
+        task_type=cfg.model.peft.task_type
+    )
+    data_collator = get_data_collator(tokenizer)
+    sft_config = get_sft_config(
+        output_dir=output_dir,
+        max_seq_length=cfg.data.max_length,
+        num_train_epochs=cfg.training.num_epochs,
+        learning_rate=cfg.training.learning_rate,
+        per_device_train_batch_size=cfg.training.per_device_train_batch_size,
+        per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
+        weight_decay=cfg.training.weight_decay,
+        logging_steps=cfg.training.logging_steps,
+        save_strategy=cfg.training.save_strategy,
+        evaluation_strategy=cfg.training.evaluation_strategy,
+        save_total_limit=cfg.training.save_total_limit,
+        lr_scheduler_type=cfg.training.lr_scheduler_type,
+    )
+
+    # Get metrics functions
+    preprocess_logits_for_metrics, compute_metrics = get_metrics_functions(tokenizer)
+
+    # Get trainer
+    trainer = get_trainer(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+        peft_config=peft_config,
+        sft_config=sft_config,
+    )
+
+    # Train
+    trainer.train()
+    
+    # Save final model explicitly to the hydra output dir (although Trainer saves checkpoints there)
+    # trainer.save_model(output_dir) # Optional, but Trainer handles checkpoints
+
+
+if __name__ == "__main__":
+    main()
