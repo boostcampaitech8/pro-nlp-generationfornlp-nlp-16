@@ -4,3 +4,4 @@
 checkpoint_dir: "" 
 checkpoint_step: "best"
 output_file: "output.csv"
+torch_dtype: "float16"
