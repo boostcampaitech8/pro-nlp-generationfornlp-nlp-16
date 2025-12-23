@@ -1,5 +1,5 @@
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
-
+from .custom_train import FocalLossTrainer # 직접 만든 커스텀 트레이너
 
 def get_data_collator(tokenizer, response_template: str = "<start_of_turn>model"):
     """
@@ -75,8 +75,11 @@ def get_trainer(
 ) -> SFTTrainer:
     """
     Get SFT Trainer
+     기존 : trainer = SFTTrainer(...) -> 기본 CrossEntropyLoss 사용
+     변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
+     이름만 바꿔주면 돌아가며 사용 가능
     """
-    trainer = SFTTrainer(
+    trainer = FocalLossTrainer(
         model=model,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
