@@ -1345,7 +1345,7 @@ requires-dist = [
     { name = "requests", specifier = "==2.32.5" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "scikit-learn", specifier = "==1.5.2" },
-    { name = "transformers", specifier = "==4.40.2" },
+    { name = "transformers", specifier = "==4.43.0" },
     { name = "trl", specifier = "==0.11.4" },
 ]
 
@@ -3076,7 +3076,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "4.40.2"
+version = "4.43.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -3090,9 +3090,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/ef/d877998c9ab04ecb8eeda495e1c64f2f6bb6724b0634f7d0d6aca2cdc6af/transformers-4.40.2.tar.gz", hash = "sha256:657b6054a2097671398d976ad46e60836e7e15f9ea9551631a96e33cb9240649", size = 7797669, upload-time = "2024-05-06T16:08:02.166Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/d9/9d932e3bff226465234a1a4dbc2e308a2a7333b92103b39bbd17a7d3a95c/transformers-4.43.0.tar.gz", hash = "sha256:4154e659eff31b0bf3b21b2c5d62e38ac8973e33c53cfe28284a19c8558234e2", size = 8071037, upload-time = "2024-07-23T15:06:28.804Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/23/ba02efa28518557e0cfe0ce5c1170000dd7501ed02ac865fc90cbe3daa93/transformers-4.40.2-py3-none-any.whl", hash = "sha256:71cb94301ec211a2e1d4b8c8d18dcfaa902dfa00a089dceca167a8aa265d6f2d", size = 8999918, upload-time = "2024-05-06T16:07:56.121Z" },
+    { url = "https://files.pythonhosted.org/packages/23/c6/445ed1d345c215a5ad094cb00359d9697efd5ddb2e5927e32c6852fad666/transformers-4.43.0-py3-none-any.whl", hash = "sha256:0158b430c3bab1abde3232598e250916edd906680b9ffe9d4e1b0b3fafbfc0ed", size = 9411812, upload-time = "2024-07-23T15:06:16.908Z" },
 ]
 
 [[package]]

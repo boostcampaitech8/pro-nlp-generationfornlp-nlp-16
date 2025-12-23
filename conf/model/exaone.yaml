@@ -1,0 +1,10 @@
+name: "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct"
+torch_dtype: "float16"
+response_template: "[|assistant|]"
+peft:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  target_modules: ['q_proj', 'k_proj', 'v_proj', 'out_proj']
+  bias: "none"
+  task_type: "CAUSAL_LM"
