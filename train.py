@@ -105,6 +105,9 @@ def main(cfg: DictConfig):
         fp16=cfg.training.get('fp16', False),
         gradient_accumulation_steps=cfg.training.get('gradient_accumulation_steps', 1),
         gradient_checkpointing=cfg.training.get('gradient_checkpointing', False),
+        load_best_model_at_end=cfg.training.load_best_model_at_end,       
+        metric_for_best_model=cfg.training.metric_for_best_model,         
+        greater_is_better=cfg.training.greater_is_better,
     )
 
     # Get metrics functions
@@ -128,6 +131,29 @@ def main(cfg: DictConfig):
     
     # Save final model explicitly to the hydra output dir (although Trainer saves checkpoints there)
     # trainer.save_model(output_dir) # Optional, but Trainer handles checkpoints
+
+    # =====================
+    # Best metrics logging
+    # =====================
+    print("\n" + "=" * 50)
+    print("!!!학습 완료!!!")
+    print("=" * 50)
+    
+    if trainer.state.best_metric is not None:
+        print(f"Best {cfg.training.metric_for_best_model}: {trainer.state.best_metric:.4f}")
+        print(f"Best checkpoint: {trainer.state.best_model_checkpoint}")
+    
+    if trainer.state.log_history:
+        eval_logs = [log for log in trainer.state.log_history if 'eval_f1' in log]
+        if eval_logs:
+            best_f1_log = max(eval_logs, key=lambda x: x.get('eval_f1', 0))
+            best_acc_log = max(eval_logs, key=lambda x: x.get('eval_accuracy', 0))
+            
+            print(f"\nBest F1: {best_f1_log['eval_f1']:.4f} (epoch {best_f1_log['epoch']})")
+            print(f"Best Accuracy: {best_acc_log['eval_accuracy']:.4f} (epoch {best_acc_log['epoch']})")
+    
+    trainer.save_state()
+    print("=" * 50)
 
 
 if __name__ == "__main__":

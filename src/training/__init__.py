@@ -1,5 +1,4 @@
 from .metrics import (
-    acc_metric,
     int_output_map,
     preprocess_logits_for_metrics,
     compute_metrics,
@@ -12,7 +11,6 @@ from .trainer import (
 )
 
 __all__ = [
-    "acc_metric",
     "int_output_map",
     "preprocess_logits_for_metrics",
     "compute_metrics",

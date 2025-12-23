@@ -28,6 +28,9 @@ def get_sft_config(
     fp16: bool = False,
     gradient_accumulation_steps: int = 1,
     gradient_checkpointing: bool = False,
+    load_best_model_at_end: bool = True,
+    metric_for_best_model: str = "f1",
+    greater_is_better: bool = True,
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -52,6 +55,9 @@ def get_sft_config(
         gradient_checkpointing=gradient_checkpointing,  # 메모리 절약
         save_only_model=True,
         report_to="none",
+        load_best_model_at_end=load_best_model_at_end,       
+        metric_for_best_model=metric_for_best_model,       
+        greater_is_better=greater_is_better,
     )
     return sft_config
 
