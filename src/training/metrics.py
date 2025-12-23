@@ -1,10 +1,9 @@
 import torch
 import numpy as np
-import evaluate
+# import evaluate
+# 변경 : 대회 기준에 맞는 평가지표인 f1으로, accuracy도 확인할 수 있게 추가
+from sklearn.metrics import f1_score, accuracy_score
 
-
-# metric 로드
-acc_metric = evaluate.load("accuracy")
 
 # 정답 토큰 매핑
 int_output_map = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
@@ -37,8 +36,11 @@ def compute_metrics(evaluation_result, tokenizer):
     predictions = np.argmax(probs, axis=-1)
 
     # 정확도 계산
-    acc = acc_metric.compute(predictions=predictions, references=labels)
-    return acc
+    f1 = f1_score(labels, predictions, average="macro")
+    acc = accuracy_score(labels, predictions)
+
+    # acc = acc_metric.compute(predictions=predictions, references=labels)
+    return {"f1" : f1, "accuracy": acc}
 
 
 def get_metrics_functions(tokenizer):
