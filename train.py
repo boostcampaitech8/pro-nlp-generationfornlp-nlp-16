@@ -60,7 +60,8 @@ def main(cfg: DictConfig):
 
     # Load model and tokenizer
     print("Loading model and tokenizer...")
-    model, tokenizer = load_model_and_tokenizer(cfg.model.name)
+    torch_dtype = cfg.model.get('torch_dtype', 'float16')
+    model, tokenizer = load_model_and_tokenizer(cfg.model.name, torch_dtype=torch_dtype)
 
     # Tokenize dataset
     print("Tokenizing dataset...")
@@ -114,6 +115,9 @@ def main(cfg: DictConfig):
         load_best_model_at_end=cfg.training.load_best_model_at_end,       
         metric_for_best_model=cfg.training.metric_for_best_model,         
         greater_is_better=cfg.training.greater_is_better,
+        fp16=cfg.training.fp16,
+        gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
+        gradient_checkpointing=cfg.training.gradient_checkpointing,
     )
 
     # Get metrics functions
