@@ -33,13 +33,16 @@ def load_model_for_inference(checkpoint_path: str):
     model = AutoPeftModelForCausalLM.from_pretrained(
         checkpoint_path,
         trust_remote_code=True,
-        # torch_dtype=torch.bfloat16,
-        device_map="auto",
+        torch_dtype=torch.float16,
+        device_map=None,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         checkpoint_path,
         trust_remote_code=True,
     )
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
 
     return model, tokenizer
 
