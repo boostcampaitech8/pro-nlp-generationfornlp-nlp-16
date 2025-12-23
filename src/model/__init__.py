@@ -4,6 +4,7 @@ from .model import (
     load_model_for_inference,
     get_peft_config,
     setup_tokenizer_for_training,
+    get_response_template,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "load_model_for_inference",
     "get_peft_config",
     "setup_tokenizer_for_training",
+    "get_response_template",
 ]
