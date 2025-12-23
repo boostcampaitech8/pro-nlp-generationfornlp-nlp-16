@@ -18,6 +18,7 @@ from src.model import (
     load_model_and_tokenizer,
     get_peft_config,
     setup_tokenizer_for_training,
+    get_response_template,
 )
 from src.training import (
     get_data_collator,
@@ -59,7 +60,8 @@ def main(cfg: DictConfig):
 
     # Load model and tokenizer
     print("Loading model and tokenizer...")
-    model, tokenizer = load_model_and_tokenizer(cfg.model.name)
+    torch_dtype = cfg.model.get('torch_dtype', 'float16')
+    model, tokenizer = load_model_and_tokenizer(cfg.model.name, torch_dtype=torch_dtype)
 
     # Tokenize dataset
     print("Tokenizing dataset...")
@@ -87,7 +89,16 @@ def main(cfg: DictConfig):
         bias=cfg.model.peft.bias,
         task_type=cfg.model.peft.task_type
     )
-    data_collator = get_data_collator(tokenizer)
+
+    if hasattr(cfg.model, 'response_template') and cfg.model.response_template:
+        response_template = cfg.model.response_template
+        print(f"✓ Config에서 지정된 response template 사용: '{response_template}'")
+    else:
+        response_template = get_response_template(cfg.model.name, tokenizer)
+        print(f"⚠ 자동 추출된 response template 사용: '{response_template}'")
+    
+    data_collator = get_data_collator(tokenizer, response_template=response_template)
+    
     sft_config = get_sft_config(
         output_dir=output_dir,
         max_seq_length=cfg.data.max_length,
@@ -104,6 +115,9 @@ def main(cfg: DictConfig):
         load_best_model_at_end=cfg.training.load_best_model_at_end,       
         metric_for_best_model=cfg.training.metric_for_best_model,         
         greater_is_better=cfg.training.greater_is_better,
+        fp16=cfg.training.fp16,
+        gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
+        gradient_checkpointing=cfg.training.gradient_checkpointing,
     )
 
     # Get metrics functions
