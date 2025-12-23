@@ -1,4 +1,5 @@
 name: "Qwen/Qwen2.5-7B-Instruct"
+response_template: "<|im_start|>assistant"
 peft:
   r: 16
   lora_alpha: 16

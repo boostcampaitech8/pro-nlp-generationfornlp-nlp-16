@@ -18,6 +18,7 @@ from src.model import (
     load_model_and_tokenizer,
     get_peft_config,
     setup_tokenizer_for_training,
+    get_response_template,
 )
 from src.training import (
     get_data_collator,
@@ -87,7 +88,16 @@ def main(cfg: DictConfig):
         bias=cfg.model.peft.bias,
         task_type=cfg.model.peft.task_type
     )
-    data_collator = get_data_collator(tokenizer)
+    
+    # Get response template: config 우선, 없으면 자동 추출
+    if hasattr(cfg.model, 'response_template') and cfg.model.response_template:
+        response_template = cfg.model.response_template
+        print(f"✓ Config에서 지정된 response template 사용: '{response_template}'")
+    else:
+        response_template = get_response_template(cfg.model.name, tokenizer)
+        print(f"⚠ 자동 추출된 response template 사용: '{response_template}'")
+    
+    data_collator = get_data_collator(tokenizer, response_template=response_template)
     sft_config = get_sft_config(
         output_dir=output_dir,
         max_seq_length=cfg.data.max_length,

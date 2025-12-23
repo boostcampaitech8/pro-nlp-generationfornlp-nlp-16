@@ -1,4 +1,5 @@
 name: "beomi/gemma-ko-2b"
+response_template: "<start_of_turn>model"
 peft:
   r: 6
   lora_alpha: 8
