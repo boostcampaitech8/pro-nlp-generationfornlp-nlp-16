@@ -69,10 +69,10 @@ def get_trainer(
 ) -> SFTTrainer:
     """
     Get SFT Trainer
+     기존 : trainer = SFTTrainer(...) -> 기본 CrossEntropyLoss 사용
+     변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
+     이름만 바꿔주면 돌아가며 사용 가능
     """
-    # 기존 : trainer = SFTTrainer(...) -> 기본 CrossEntropyLoss 사용
-    # 변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
-    # 이름만 바꿔주면 돌아가며 사용 가능
     trainer = FocalLossTrainer(
         model=model,
         train_dataset=train_dataset,
