@@ -28,14 +28,14 @@ class FocalLoss(nn.Module):
         self.reduction = reduction
 
 
-"""
-Focal Loss Calculation 함수
+    """
+    Focal Loss Calculation 함수
 
-Args :
-inputs : 모델이 예측 한 값 (Logits) [Batch_size, Num_classes]
-targets : 정답 라벨 (Labels) [Batch_size]
+    Args :
+    inputs : 모델이 예측 한 값 (Logits) [Batch_size, Num_classes]
+    targets : 정답 라벨 (Labels) [Batch_size]
 
-"""
+    """
 
 
     def forward(self, inputs, targets):
