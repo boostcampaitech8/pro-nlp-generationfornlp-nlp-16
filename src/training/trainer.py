@@ -31,6 +31,7 @@ def get_sft_config(
     fp16: bool = False,
     gradient_accumulation_steps: int = 1,
     gradient_checkpointing: bool = False,
+    neftune_nois_alpha: float = None, # NEFTune 잡음 강도, None이면 비활성화 실행할 때 따로 써줘야 적용되게했음
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -58,6 +59,7 @@ def get_sft_config(
         fp16=fp16,
         gradient_accumulation_steps=gradient_accumulation_steps,
         gradient_checkpointing=gradient_checkpointing,
+        neftune_noise_alpha=neftune_noise_alpha,
     )
     return sft_config
 
