@@ -136,6 +136,11 @@ def main(cfg: DictConfig):
         sft_config=sft_config,
     )
 
+    #적용된 Trainer 확인용
+    print("\n" + "="*30)
+    print(f"🚀 적용된 Trainer Class: {type(trainer).__name__}")
+    print("="*30 + "\n")
+
     # Train
     trainer.train()
     
