@@ -57,17 +57,22 @@ class FocalLoss(nn.Module):
         valid_inputs = inputs[valid_mask]
         valid_targets = targets[valid_mask]
         
-        #1. 기본 Cross Entropy Loss 계산 (reducion = none 으로 설정하여 각 샘플별 Loss를 따로 구함)
-        ce_loss = F.cross_entropy(valid_inputs, valid_targets, reduction='none')
+        # 1. Log Softmax 계산 (수치 안정성 확보)
+        log_probs = F.log_softmax(valid_inputs, dim=-1)
+
+        # 정답 클래스에 해당하는 log_prob만 추출
+        # gather를 위해 차원을 맞춤: [N] -> [N, 1]
+        log_pt = log_probs.gather(-1, valid_targets.unsqueeze(-1)).squeeze(-1)
 
         #2. pt(확률) 계산
         #Cross Entropy는 -log(p)형식이라서, exp(-ce_loss)를 하면 원래 확률(p)이 나옴
         #pt: 모델이 정답을 맞출 확률 (0~1)
-        pt = torch.exp(-ce_loss)
+        pt = log_pt.exp()
         
         #3. Focal loss 공식 적용
         # (1-pt) : 모델이 틀릴 확률 (쉽게 맞추면 이게 0에 가까워진다)
         # ** self.gamma : 틀릴 확률에 제곱을 해서 쉬운 문제의 Loss를 0으로 확 깎아버린다.
+        ce_loss = -log_pt
         focal_weight = (1 - pt) ** self.gamma
         
         # Alpha 적용 (클래스별 가중치)
