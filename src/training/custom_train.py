@@ -26,7 +26,14 @@ class FocalLossTrainer(SFTTrainer):
         logits = outputs.get("logits") # 예측값
 
         #2. Focal Loss 객체 생성 (필요하면 config에서 값을 받아오게끔 수정 가능함)
-        loss_fct = FocalLoss(gamma=2.0)
+        # 클래스 불균형 가중치: 1번(755개), 2번(350개), 3번(259개), 4번(232개), 5번(28개)
+        # 5번이 매우 적으므로 높은 가중치 부여
+        # 추 후 맞춰지면 수정해야함.
+        loss_fct = FocalLoss(
+            gamma=2.0,
+            alpha=[1.0, 2.2, 2.9, 3.3, 27.0],  # 클래스별 가중치
+            ignore_index=-100,  # 패딩 토큰 무시
+        )
 
         #3. Casual LM(Gemma, Llam 등)을 위한 shift연산
         #LLM은 "오늘 점심은" 을 보고나서 "제육볶음"을 맞추는 방식
@@ -43,3 +50,4 @@ class FocalLossTrainer(SFTTrainer):
         )
 
         return (loss, outputs) if return_outputs else loss
+    
