@@ -31,7 +31,7 @@ def get_sft_config(
     fp16: bool = False,
     gradient_accumulation_steps: int = 1,
     gradient_checkpointing: bool = False,
-    neftune_nois_alpha: float = None, # NEFTune 잡음 강도, None이면 비활성화 실행할 때 따로 써줘야 적용되게했음
+    neftune_noise_alpha: float = None, # NEFTune 잡음 강도, None이면 비활성화 실행할 때 따로 써줘야 적용되게했음
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -81,7 +81,7 @@ def get_trainer(
      변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
      이름만 바꿔주면 돌아가며 사용 가능
     """
-    trainer = FocalLossTrainer(
+    trainer = SFTTrainer(
         model=model,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
