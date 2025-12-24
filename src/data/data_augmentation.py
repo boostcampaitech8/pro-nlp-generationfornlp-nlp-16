@@ -74,6 +74,83 @@ def load_newspaper_data(file_path: str) -> List[Dict[str, Any]]:
     console.print(f"[green]Loaded {len(articles)} articles[/green]")
     return articles
 
+def create_batch_request_file(
+    articles: List[Dict[str, Any]],
+    output_file: str,
+    num_problems: int = 2000,
+    problems_per_article: int = 1,
+    seed: int = 42,
+) -> str:
+    """
+    OpenAI Batch API에 제출할 요청들을 JSONL 파일 형태로 생성.
+
+    각 신문 기사(article)를 기반으로 하나 이상의 문제 생성 요청을 만들고,
+    이를 OpenAI Batch API 규격에 맞는 JSONL 파일로 저장.
+
+    Args:
+        articles: 신문 기사 딕셔너리 리스트
+        output_file: 생성된 JSONL 파일을 저장할 경로
+        num_problems: 전체 생성하고자 하는 문제 수 목표값
+        problems_per_article: 기사 1개당 생성할 문제 수
+        seed: 무작위 샘플링 재현성을 위한 시드 값
+
+    Returns:
+        생성된 JSONL 배치 요청 파일의 경로
+    """
+    console.print(f"[cyan]Creating batch request file...[/cyan]")
+
+    # 재현성위 위한 시드 설정
+    set_seed(seed)
+    console.print(f"[green]Random seed set to: {seed}[/green]")
+
+    # 목표 문제 수에 맞게 필요한 기사 수 계산
+    # 기사 수가 부족할 경우를 대비해서 min 사용
+    num_articles_needed = min(len(articles), num_problems // problems_per_article)
+
+    # 전체 기사 수가 충분하면 랜덤 샘플링
+    if len(articles) > num_articles_needed:
+        selected_articles = random.sample(articles, num_articles_needed)
+        console.print(
+            f"[green]Randomly sampled {num_articles_needed} articles from {len(articles)} total[/green]"
+        )
+    else:
+        selected_articles = articles
+        console.print(f"[yellow]Using all {len(articles)} articles[/yellow]")
+
+    # Batch API 요청 객체 생성
+    requests = []
+    for article in track(selected_articles, description="Creating requests"):
+        for problem_idx in range(problems_per_article):
+            # custom_id는 이후 결과 매핑을 위한 고유 식별자
+            custom_id = f"{article['article_id']}-q{problem_idx + 1}"
+
+            request = {
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": create_prompt_for_article(article)},
+                    ],
+                    "temperature": 0.7,
+                    "response_format": {"type": "json_object"},
+                },
+            }
+            requests.append(request)
+
+    # JSONL 파일로 저장
+    # Batch API는 요청을 JSONL (한 줄에 하나의 JSON) 형식으로 받음
+    with open(output_file, "w", encoding="utf-8") as f:
+        for request in requests:
+            f.write(json.dumps(request, ensure_ascii=False) + "\n")
+
+    console.print(
+        f"[green]Created batch request file with {len(requests)} requests: {output_file}[/green]"
+    )
+    return output_file
+
 def main(
     file_path: str = "data/data4gen/newspaper",
 ):
