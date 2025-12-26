@@ -11,11 +11,12 @@ from rich.console import Console
 from rich.progress import track
 from dotenv import load_dotenv
 from src.utils import set_seed
-from src.utils.datagen_prompt import SYSTEM_PROMPT, create_prompt_for_article
+from src.data_gen.datagen_prompt import SYSTEM_PROMPT, create_prompt_for_article
 
 load_dotenv()
 
 console = Console()
+
 
 def load_newspaper_data(file_path: str) -> List[Dict[str, Any]]:
     """
@@ -27,7 +28,7 @@ def load_newspaper_data(file_path: str) -> List[Dict[str, Any]]:
     Returns:
         메타데이터를 포함한 기사 목록
     """
-    
+
     # 로딩 시작
     console.print(f"[cyan]Loading newspaper data from {file_path}...[/cyan]")
 
@@ -74,6 +75,7 @@ def load_newspaper_data(file_path: str) -> List[Dict[str, Any]]:
 
     console.print(f"[green]Loaded {len(articles)} articles[/green]")
     return articles
+
 
 def create_batch_request_file(
     articles: List[Dict[str, Any]],
@@ -226,7 +228,7 @@ def monitor_batch(
         elif batch.status in ["failed", "expired", "cancelled"]:
             console.print(f"[red]Batch {batch.status}![/red]")
             raise Exception(f"Batch {batch.status}: {batch}")
-        
+
         # 진행 중인 경우 대기 후 재조회
         console.print(f"[cyan]Waiting {poll_interval} seconds...[/cyan]")
         time.sleep(poll_interval)
