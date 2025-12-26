@@ -12,75 +12,16 @@ from rich.progress import track
 from dotenv import load_dotenv
 from src.utils import set_seed
 from src.data_gen.datagen_prompt import SYSTEM_PROMPT, create_prompt_for_article
+from src.data_gen.data_loader import load_newspaper_data, load_book_data
 
 load_dotenv()
 
 console = Console()
 
 
-def load_newspaper_data(file_path: str) -> List[Dict[str, Any]]:
-    """
-    신문 JSON 파일을 로드하고 파싱합니다.
-
-    Args:
-        file_path: 신문 JSON 파일이 저장된 파일 경로
-
-    Returns:
-        메타데이터를 포함한 기사 목록
-    """
-
-    # 로딩 시작
-    console.print(f"[cyan]Loading newspaper data from {file_path}...[/cyan]")
-
-    articles = []
-
-    # 해당 경로의 모든 JSON 파일 찾기
-    json_files = list(Path(file_path).glob("*.json"))
-
-    # 각 JSON 파일 파싱
-    for json_file in track(json_files, description="Parsing JSON files"):
-        try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # JSON 내부의 document에서 기사 데이터 추출
-            for doc in data.get("document", []):
-                # 흩어져있는 paragraph들을 합쳐서 하나의 content로 만들기
-                paragraphs = doc.get("paragraph", [])
-                content = "\n".join(
-                    [
-                        p.get("form", "").replace("<p>", "").replace("</p>", "").strip()
-                        for p in paragraphs
-                    ]
-                )
-
-                # 너무 짧은 본문은 제외
-                if len(content) < 200:
-                    continue
-
-                # 기사 단위로 데이터 재구성
-                article = {
-                    "article_id": doc.get("id"),
-                    "title": doc.get("metadata", {}).get("title", ""),
-                    "content": content,
-                    "date": doc.get("metadata", {}).get("date", ""),
-                    "topic": doc.get("metadata", {}).get("topic", ""),
-                }
-
-                articles.append(article)
-
-        except Exception as e:
-            console.print(f"[red]Error parsing {json_file}: {e}[/red]")
-            continue
-
-    console.print(f"[green]Loaded {len(articles)} articles[/green]")
-    return articles
-
-
 def create_batch_request_file(
     articles: List[Dict[str, Any]],
     output_file: str,
-    num_problems: int = 2000,
     problems_per_article: int = 1,
     seed: int = 42,
 ) -> str:
@@ -91,9 +32,8 @@ def create_batch_request_file(
     이를 OpenAI Batch API 규격에 맞는 JSONL 파일로 저장.
 
     Args:
-        articles: 신문 기사 딕셔너리 리스트
+        articles: 신문 기사 딕셔너리 리스트 (이미 샘플링됨)
         output_file: 생성된 JSONL 파일을 저장할 경로
-        num_problems: 전체 생성하고자 하는 문제 수 목표값
         problems_per_article: 기사 1개당 생성할 문제 수
         seed: 무작위 샘플링 재현성을 위한 시드 값
 
@@ -102,23 +42,13 @@ def create_batch_request_file(
     """
     console.print(f"[cyan]Creating batch request file...[/cyan]")
 
-    # 재현성위 위한 시드 설정
+    # 재현성을 위한 시드 설정
     set_seed(seed)
     console.print(f"[green]Random seed set to: {seed}[/green]")
 
-    # 목표 문제 수에 맞게 필요한 기사 수 계산
-    # 기사 수가 부족할 경우를 대비해서 min 사용
-    num_articles_needed = min(len(articles), num_problems // problems_per_article)
-
-    # 전체 기사 수가 충분하면 랜덤 샘플링
-    if len(articles) > num_articles_needed:
-        selected_articles = random.sample(articles, num_articles_needed)
-        console.print(
-            f"[green]Randomly sampled {num_articles_needed} articles from {len(articles)} total[/green]"
-        )
-    else:
-        selected_articles = articles
-        console.print(f"[yellow]Using all {len(articles)} articles[/yellow]")
+    # 전달받은 모든 articles 사용
+    selected_articles = articles
+    console.print(f"[green]Using {len(articles)} articles[/green]")
 
     # Batch API 요청 객체 생성
     requests = []
@@ -375,23 +305,33 @@ def save_to_csv(problems: List[Dict[str, Any]], output_csv: str):
 
 def main(
     file_path: str = "data/data4gen/newspaper",
-    output_csv: str = "data/train_newspaper_augmented.csv",
-    num_problems: int = 2000,
+    output_csv: str = "data/train_augmented.csv",
+    num_problems: int = 10,
     problems_per_article: int = 1,
     seed: int = 42,
+    data_type: str = "newspaper",
+    newspaper_path: str = None,
+    book_path: str = None,
+    num_newspaper_problems: int = None,
+    num_book_problems: int = None,
 ):
     """
-    신문 기사 기반 수능형 문제 데이터 증강 파이프라인의 메인 함수.
+    데이터 기반 수능형 문제 데이터 증강 파이프라인의 메인 함수.
 
-    신문 JSON 데이터를 불러와 OpenAI Batch API를 통해 문제를 대량 생성하고,
+    신문 또는 도서 JSON 데이터를 불러와 OpenAI Batch API를 통해 문제를 대량 생성하고,
     생성 결과를 검증한 뒤 학습용 CSV 형식으로 저장합니다.
 
     Args:
-        file_path: 신문 기사 JSON 파일들이 저장된 디렉터리 경로
+        file_path: 데이터 JSON 파일들이 저장된 디렉터리 경로 (단일 타입 사용 시)
         output_csv: 최종 생성된 학습 데이터 CSV 저장 경로
-        num_problems: 생성하고자 하는 전체 문제 수 목표값
-        problems_per_article: 기사 1개당 생성할 문제 수
+        num_problems: 생성하고자 하는 전체 문제 수 목표값 (단일 타입 사용 시)
+        problems_per_article: 기사/passage 1개당 생성할 문제 수
         seed: 무작위 샘플링 및 재현성을 위한 랜덤 시드 값
+        data_type: 데이터 타입 ("newspaper", "book", 또는 "both")
+        newspaper_path: 신문 데이터 경로 (both 모드에서만 사용)
+        book_path: 도서 데이터 경로 (both 모드에서만 사용)
+        num_newspaper_problems: 신문 데이터로 생성할 문제 수 (both 모드에서만 사용)
+        num_book_problems: 도서 데이터로 생성할 문제 수 (both 모드에서만 사용)
     """
     console.print("[bold green]Starting Data Augmentation Pipeline[/bold green]")
 
@@ -406,15 +346,140 @@ def main(
 
     client = OpenAI(api_key=api_key)
 
-    # Step 1: 신문 기사 데이터 로드
-    articles = load_newspaper_data(file_path)
+    # Step 1: 데이터 로드 및 샘플링
+    articles = []
+
+    if data_type == "newspaper":
+        console.print(f"[cyan]📰 신문 데이터 로딩 모드[/cyan]")
+        all_articles = load_newspaper_data(file_path)
+
+        # 필요한 개수만큼 샘플링
+        set_seed(seed)
+        num_articles_needed = num_problems // problems_per_article
+
+        if len(all_articles) >= num_articles_needed:
+            articles = random.sample(all_articles, num_articles_needed)
+            console.print(
+                f"[green]✓ 신문 기사 {len(articles)}개 샘플링 (전체 {len(all_articles)}개 중)[/green]"
+            )
+        else:
+            articles = all_articles
+            console.print(
+                f"[yellow]⚠️  신문 기사 부족: {len(articles)}개 사용 → {len(articles) * problems_per_article}개 문제 생성 예정[/yellow]"
+            )
+
+        total_num_problems = len(articles) * problems_per_article
+
+    elif data_type == "book":
+        console.print(f"[cyan]📚 도서 데이터 로딩 모드[/cyan]")
+        all_articles = load_book_data(written_dir=file_path, seed=seed)
+
+        # 필요한 개수만큼 샘플링
+        set_seed(seed)
+        num_articles_needed = num_problems // problems_per_article
+
+        if len(all_articles) >= num_articles_needed:
+            articles = random.sample(all_articles, num_articles_needed)
+            console.print(
+                f"[green]✓ 도서 passage {len(articles)}개 샘플링 (전체 {len(all_articles)}개 중)[/green]"
+            )
+        else:
+            articles = all_articles
+            console.print(
+                f"[yellow]⚠️  도서 passage 부족: {len(articles)}개 사용 → {len(articles) * problems_per_article}개 문제 생성 예정[/yellow]"
+            )
+
+        total_num_problems = len(articles) * problems_per_article
+
+    elif data_type == "both":
+        console.print(f"[cyan]📰📚 신문+도서 혼합 데이터 로딩 모드[/cyan]")
+
+        set_seed(seed)
+        newspaper_articles = []
+        book_articles = []
+
+        # 신문 데이터 로드 및 샘플링
+        if newspaper_path and num_newspaper_problems and num_newspaper_problems > 0:
+            console.print(
+                f"[cyan]📰 신문 데이터에서 {num_newspaper_problems}개 문제 생성 시작[/cyan]"
+            )
+            all_newspaper_articles = load_newspaper_data(newspaper_path)
+
+            # 필요한 개수만큼 샘플링 (problems_per_article 고려)
+            num_newspaper_articles_needed = (
+                num_newspaper_problems // problems_per_article
+            )
+            if len(all_newspaper_articles) >= num_newspaper_articles_needed:
+                newspaper_articles = random.sample(
+                    all_newspaper_articles, num_newspaper_articles_needed
+                )
+                console.print(
+                    f"[green]✓ 신문 기사 {len(newspaper_articles)}개 샘플링 (전체 {len(all_newspaper_articles)}개 중)[/green]"
+                )
+            else:
+                newspaper_articles = all_newspaper_articles
+                actual_problems = len(newspaper_articles) * problems_per_article
+                console.print(
+                    f"[yellow]⚠️  신문 기사 부족: {len(newspaper_articles)}개 사용 → {actual_problems}개 문제 생성 예정[/yellow]"
+                )
+        else:
+            num_newspaper_problems = 0
+
+        # 도서 데이터 로드 및 샘플링
+        if book_path and num_book_problems and num_book_problems > 0:
+            console.print(
+                f"[cyan]📚 도서 데이터에서 {num_book_problems}개 문제 생성 시작[/cyan]"
+            )
+            all_book_articles = load_book_data(written_dir=book_path, seed=seed)
+
+            # 필요한 개수만큼 샘플링 (problems_per_article 고려)
+            num_book_articles_needed = num_book_problems // problems_per_article
+            if len(all_book_articles) >= num_book_articles_needed:
+                book_articles = random.sample(
+                    all_book_articles, num_book_articles_needed
+                )
+                console.print(
+                    f"[green]✓ 도서 passage {len(book_articles)}개 샘플링 (전체 {len(all_book_articles)}개 중)[/green]"
+                )
+            else:
+                book_articles = all_book_articles
+                actual_problems = len(book_articles) * problems_per_article
+                console.print(
+                    f"[yellow]⚠️  도서 passage 부족: {len(book_articles)}개 사용 → {actual_problems}개 문제 생성 예정[/yellow]"
+                )
+        else:
+            num_book_problems = 0
+
+        if not newspaper_articles and not book_articles:
+            raise ValueError(
+                "both 모드에서는 num_newspaper_problems 또는 num_book_problems 중 "
+                "최소 하나는 0보다 커야 합니다."
+            )
+
+        # 신문 + 도서 데이터 결합
+        articles = newspaper_articles + book_articles
+        total_num_problems = (
+            len(newspaper_articles) * problems_per_article
+            + len(book_articles) * problems_per_article
+        )
+
+        console.print(f"[green]총 {len(articles)}개 데이터 준비 완료[/green]")
+        console.print(
+            f"[cyan]생성 예정: 신문 {len(newspaper_articles) * problems_per_article}개 + "
+            f"도서 {len(book_articles) * problems_per_article}개 = "
+            f"총 {total_num_problems}개 문제[/cyan]"
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown data_type: {data_type}. Use 'newspaper', 'book', or 'both'."
+        )
 
     # Step 2: Batch API 요청 파일 생성
     batch_file = "batch_request.jsonl"
     create_batch_request_file(
         articles,
         batch_file,
-        num_problems=num_problems,
         problems_per_article=problems_per_article,
         seed=seed,
     )
@@ -475,6 +540,37 @@ if __name__ == "__main__":
         default=42,
         help="재현성을 위한 랜덤 시드 값",
     )
+    parser.add_argument(
+        "--data_type",
+        type=str,
+        default="newspaper",
+        choices=["newspaper", "book", "both"],
+        help="데이터 타입: 'newspaper', 'book', 또는 'both'",
+    )
+    parser.add_argument(
+        "--newspaper_path",
+        type=str,
+        default=None,
+        help="신문 데이터 경로 (both 모드에서만 사용)",
+    )
+    parser.add_argument(
+        "--book_path",
+        type=str,
+        default=None,
+        help="도서 데이터 경로 (both 모드에서만 사용)",
+    )
+    parser.add_argument(
+        "--num_newspaper_problems",
+        type=int,
+        default=None,
+        help="신문 데이터로 생성할 문제 수 (both 모드에서만 사용)",
+    )
+    parser.add_argument(
+        "--num_book_problems",
+        type=int,
+        default=None,
+        help="도서 데이터로 생성할 문제 수 (both 모드에서만 사용)",
+    )
 
     args = parser.parse_args()
 
@@ -484,4 +580,9 @@ if __name__ == "__main__":
         num_problems=args.num_problems,
         problems_per_article=args.problems_per_article,
         seed=args.seed,
+        data_type=args.data_type,
+        newspaper_path=args.newspaper_path,
+        book_path=args.book_path,
+        num_newspaper_problems=args.num_newspaper_problems,
+        num_book_problems=args.num_book_problems,
     )
