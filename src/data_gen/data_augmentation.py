@@ -304,16 +304,15 @@ def save_to_csv(problems: List[Dict[str, Any]], output_csv: str):
 
 
 def main(
-    file_path: str = "data/data4gen/newspaper",
+    newspaper_path: str = "data/data4gen/newspaper",
+    book_path: str = "data/data4gen/book",
     output_csv: str = "data/train_augmented.csv",
-    num_problems: int = 10,
     problems_per_article: int = 1,
     seed: int = 42,
     data_type: str = "newspaper",
-    newspaper_path: str = None,
-    book_path: str = None,
     num_newspaper_problems: int = None,
     num_book_problems: int = None,
+    batch_size: int = 200,
 ):
     """
     데이터 기반 수능형 문제 데이터 증강 파이프라인의 메인 함수.
@@ -351,11 +350,11 @@ def main(
 
     if data_type == "newspaper":
         console.print(f"[cyan]📰 신문 데이터 로딩 모드[/cyan]")
-        all_articles = load_newspaper_data(file_path)
+        all_articles = load_newspaper_data(newspaper_path)
 
         # 필요한 개수만큼 샘플링
         set_seed(seed)
-        num_articles_needed = num_problems // problems_per_article
+        num_articles_needed = num_newspaper_problems // problems_per_article
 
         if len(all_articles) >= num_articles_needed:
             articles = random.sample(all_articles, num_articles_needed)
@@ -372,11 +371,11 @@ def main(
 
     elif data_type == "book":
         console.print(f"[cyan]📚 도서 데이터 로딩 모드[/cyan]")
-        all_articles = load_book_data(written_dir=file_path, seed=seed)
+        all_articles = load_book_data(book_path=book_path, seed=seed)
 
         # 필요한 개수만큼 샘플링
         set_seed(seed)
-        num_articles_needed = num_problems // problems_per_article
+        num_articles_needed = num_book_problems // problems_per_article
 
         if len(all_articles) >= num_articles_needed:
             articles = random.sample(all_articles, num_articles_needed)
@@ -430,7 +429,7 @@ def main(
             console.print(
                 f"[cyan]📚 도서 데이터에서 {num_book_problems}개 문제 생성 시작[/cyan]"
             )
-            all_book_articles = load_book_data(written_dir=book_path, seed=seed)
+            all_book_articles = load_book_data(book_path=book_path, seed=seed)
 
             # 필요한 개수만큼 샘플링 (problems_per_article 고려)
             num_book_articles_needed = num_book_problems // problems_per_article
@@ -475,33 +474,60 @@ def main(
             f"Unknown data_type: {data_type}. Use 'newspaper', 'book', or 'both'."
         )
 
-    # Step 2: Batch API 요청 파일 생성
-    batch_file = "batch_request.jsonl"
-    create_batch_request_file(
-        articles,
-        batch_file,
-        problems_per_article=problems_per_article,
-        seed=seed,
+    # Step 2-6: 배치를 나눠서 순차 처리
+    # 배치 크기: 한 번에 처리할 기사 수 (요청 수 = batch_size * problems_per_article)
+    all_problems = []
+    total_articles = len(articles)
+    total_batches = (total_articles + batch_size - 1) // batch_size
+
+    console.print(
+        f"[cyan]총 {total_articles}개 기사를 {total_batches}개 배치로 나눠 처리합니다[/cyan]"
+    )
+    console.print(
+        f"[yellow]배치 크기: {batch_size}개 기사 (예상 요청 수: {batch_size * problems_per_article}개)[/yellow]"
     )
 
-    # Step 3: 생성된 JSONL 파일을 OpenAI Batch API에 제출
-    batch_id = submit_batch(client, batch_file)
+    for batch_idx in range(0, total_articles, batch_size):
+        batch_num = batch_idx // batch_size + 1
+        batch_articles = articles[batch_idx : batch_idx + batch_size]
 
-    # Step 4: Batch 작업 상태 모니터링
-    completed_batch = monitor_batch(client, batch_id)
+        console.print(
+            f"[bold cyan]배치 {batch_num}/{total_batches} 처리 중... ({len(batch_articles)}개 기사)[/bold cyan]"
+        )
 
-    # Step 5: 완료된 배치의 결과(JSONL)를 로컬 파일로 저장
-    results_file = "batch_results.jsonl"
-    download_results(client, completed_batch, results_file)
+        # Step 2: 배치 요청 파일 생성
+        batch_file = f"batch_request_{batch_idx}.jsonl"
+        create_batch_request_file(
+            batch_articles,
+            batch_file,
+            problems_per_article=problems_per_article,
+            seed=seed,
+        )
 
-    # Step 6: 모델 출력 JSON을 검증하고 형식상 유효한 문제만 추출
-    problems = validate_and_parse_problems(results_file)
+        # Step 3: 배치 제출
+        batch_id = submit_batch(client, batch_file)
 
-    # Step 7: 검증된 문제를 train.csv 호환 형식으로 저장
-    save_to_csv(problems, output_csv)
+        # Step 4: 배치 모니터링
+        completed_batch = monitor_batch(client, batch_id)
+
+        # Step 5: 결과 다운로드
+        results_file = f"batch_results_{batch_idx}.jsonl"
+        download_results(client, completed_batch, results_file)
+
+        # Step 6: 결과 파싱
+        problems = validate_and_parse_problems(results_file)
+        all_problems.extend(problems)
+
+        console.print(
+            f"[green]✓ 배치 {batch_num} 완료: {len(problems)}개 문제 생성 (누적: {len(all_problems)}개)[/green]"
+        )
+
+    # Step 7: 모든 문제를 한 번에 저장
+    console.print(f"[cyan]총 {len(all_problems)}개 문제를 저장합니다...[/cyan]")
+    save_to_csv(all_problems, output_csv)
 
     console.print("[bold green]Data Augmentation Pipeline Completed![/bold green]")
-    console.print(f"[green]Generated {len(problems)} problems[/green]")
+    console.print(f"[green]Generated {len(all_problems)} problems[/green]")
     console.print(f"[green]Output saved to {output_csv}[/green]")
 
 
@@ -513,20 +539,21 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--file_path",
-        default="data/data4gen/newspaper",
-        help="신문 기사 JSON 파일들이 저장된 디렉터리 경로",
+        "--newspaper_path",
+        type=str,
+        default=None,
+        help="신문 데이터 경로 (both 모드에서만 사용)",
+    )
+    parser.add_argument(
+        "--book_path",
+        type=str,
+        default=None,
+        help="도서 데이터 경로 (both 모드에서만 사용)",
     )
     parser.add_argument(
         "--output_csv",
         default="data/train_newspaper_augmented.csv",
         help="생성된 학습 데이터 CSV 저장 경로",
-    )
-    parser.add_argument(
-        "--num_problems",
-        type=int,
-        default=2000,
-        help="생성할 전체 문제 수",
     )
     parser.add_argument(
         "--problems_per_article",
@@ -548,18 +575,6 @@ if __name__ == "__main__":
         help="데이터 타입: 'newspaper', 'book', 또는 'both'",
     )
     parser.add_argument(
-        "--newspaper_path",
-        type=str,
-        default=None,
-        help="신문 데이터 경로 (both 모드에서만 사용)",
-    )
-    parser.add_argument(
-        "--book_path",
-        type=str,
-        default=None,
-        help="도서 데이터 경로 (both 모드에서만 사용)",
-    )
-    parser.add_argument(
         "--num_newspaper_problems",
         type=int,
         default=None,
@@ -571,13 +586,18 @@ if __name__ == "__main__":
         default=None,
         help="도서 데이터로 생성할 문제 수 (both 모드에서만 사용)",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=200,
+        help="한 번에 처리할 기사 수 (기본값: 200, 토큰 제한 회피를 위해 조정 가능)",
+    )
 
     args = parser.parse_args()
 
     main(
         file_path=args.file_path,
         output_csv=args.output_csv,
-        num_problems=args.num_problems,
         problems_per_article=args.problems_per_article,
         seed=args.seed,
         data_type=args.data_type,
@@ -585,4 +605,5 @@ if __name__ == "__main__":
         book_path=args.book_path,
         num_newspaper_problems=args.num_newspaper_problems,
         num_book_problems=args.num_book_problems,
+        batch_size=args.batch_size,
     )
