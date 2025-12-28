@@ -1,0 +1,13 @@
+# @package _global_
+
+# 데이터 타입
+data_type: newspaper
+
+# 신문 데이터 관련 설정
+newspaper_path: ${hydra:runtime.cwd}/data/data4gen/newspaper
+output_csv: ${hydra:runtime.cwd}/data/train_newspaper_augmented.csv
+num_newspaper_problems: 10
+
+# both 모드 파라미터 (사용 안 함)
+book_path: null
+num_book_problems: null

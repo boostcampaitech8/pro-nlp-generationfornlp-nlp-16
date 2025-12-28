@@ -1,0 +1,13 @@
+# @package _global_
+
+# 데이터 타입
+data_type: book
+
+# 도서 데이터 관련 설정
+book_path: ${hydra:runtime.cwd}/data/data4gen/written
+output_csv: ${hydra:runtime.cwd}/data/train_book_augmented.csv
+num_book_problems: 10
+
+# both 모드 파라미터 (사용 안 함)
+newspaper_path: null
+num_newspaper_problems: null

@@ -1,0 +1,18 @@
+# @package _global_
+
+# 데이터 타입
+data_type: both
+
+# 출력 설정
+output_csv: ${hydra:runtime.cwd}/data/train_combined_augmented_final_test.csv
+
+# 혼합 모드 데이터 경로
+newspaper_path: ${hydra:runtime.cwd}/data/data4gen/newspaper
+book_path: ${hydra:runtime.cwd}/data/data4gen/written
+
+# 각 데이터 타입별 문제 수
+num_newspaper_problems: 2000
+num_book_problems: 2000
+
+# 단일 모드 파라미터 (사용 안 함)
+file_path: null
