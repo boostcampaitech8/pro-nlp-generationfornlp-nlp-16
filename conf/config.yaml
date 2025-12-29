@@ -6,7 +6,7 @@ defaults:
 
 seed: 42
 data:
-  train_path: "data/train.csv"
+  train_path: "data/combined_train.csv"
   test_path: "data/test.csv"
   max_length: 1024
   test_size: 0.1
