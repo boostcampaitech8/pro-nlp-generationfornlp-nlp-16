@@ -1,6 +1,6 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import AutoPeftModelForCausalLM, LoraConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import AutoPeftModelForCausalLM, LoraConfig, prepare_model_for_kbit_training
 
 
 CHAT_TEMPLATE = "{% if messages[0]['role'] == 'system' %}{% set system_message = messages[0]['content'] %}{% endif %}{% if system_message is defined %}{{ system_message }}{% endif %}{% for message in messages %}{% set content = message['content'] %}{% if message['role'] == 'user' %}{{ '<start_of_turn>user\\n' + content + '<end_of_turn>\\n<start_of_turn>model\\n' }}{% elif message['role'] == 'assistant' %}{{ content + '<end_of_turn>\\n' }}{% endif %}{% endfor %}"
@@ -25,13 +25,14 @@ def get_response_template(model_name: str, tokenizer) -> str:
         return "<start_of_turn>model"
 
 
-def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype: str = "float16"):
+def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype: str = "float16", quantization_config: dict = None):
     """
-    Load model and tokenizer for training
+    Load model and tokenizer for training (with optional QLoRA quantization)
 
     Args:
         model_name: HuggingFace model name
         torch_dtype: Data type for model weights ('float16', 'bfloat16', 'float32', or 'auto')
+        quantization_config: Dict containing bitsandbytes configuration
     """
     # Convert string dtype to torch dtype
     dtype_mapping = {
@@ -41,11 +42,29 @@ def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype:
         "auto": "auto"
     }
     dtype = dtype_mapping.get(torch_dtype, torch.float16)
+
+    bnb_config = None
+    if quantization_config:
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=quantization_config.get('load_in_4bit', False),
+            bnb_4bit_use_double_quant=quantization_config.get('bnb_4bit_use_double_quant', False),
+            bnb_4bit_quant_type=quantization_config.get('bnb_4bit_quant_type', 'nf4'),
+            bnb_4bit_compute_dtype=dtype_mapping.get(quantization_config.get('bnb_4bit_compute_dtype', 'float16'), torch.float16)
+        )
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=dtype,
+        quantization_config=bnb_config,
         trust_remote_code=True,
+        device_map={"": 0} if bnb_config else None, # single GPU일 때만 명시
     )
+
+    if bnb_config:
+        print("Preparing model for k-bit training...")
+        model = prepare_model_for_kbit_training(model)
+        model.graidient_checkpointing_enable()
+        
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         trust_remote_code=True,
