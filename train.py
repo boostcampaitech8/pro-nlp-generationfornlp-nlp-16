@@ -109,7 +109,7 @@ def main(cfg: DictConfig):
         weight_decay=cfg.training.weight_decay,
         logging_steps=cfg.training.logging_steps,
         save_strategy=cfg.training.save_strategy,
-        evaluation_strategy=cfg.training.evaluation_strategy,
+        eval_strategy=cfg.training.evaluation_strategy,
         save_total_limit=cfg.training.save_total_limit,
         lr_scheduler_type=cfg.training.lr_scheduler_type,
         load_best_model_at_end=cfg.training.load_best_model_at_end,       
