@@ -25,7 +25,7 @@ def preprocess_logits_for_metrics(logits, labels, tokenizer):
     mask = labels_t != -100
     B, S = mask.shape
     seq_idx = torch.arange(S, device=logits.device)
-    last_pos = (mask * seq_idx).argmax(dim=1).values
+    last_pos = (mask * seq_idx).argmax(dim=1)
 
     gathered = logits[torch.arange(B, device=logits.device), last_pos]
     return gathered[:, logit_idx]

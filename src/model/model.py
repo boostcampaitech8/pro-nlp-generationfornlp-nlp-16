@@ -63,7 +63,7 @@ def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype:
     if bnb_config:
         print("Preparing model for k-bit training...")
         model = prepare_model_for_kbit_training(model)
-        model.graidient_checkpointing_enable()
+        model.gradient_checkpointing_enable()
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
