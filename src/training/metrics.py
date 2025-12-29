@@ -14,10 +14,23 @@ def preprocess_logits_for_metrics(logits, labels, tokenizer):
     모델의 logits 를 조정하여 정답 토큰 부분만 출력하도록 설정
     """
     logits = logits if not isinstance(logits, tuple) else logits[0]
-    logit_idx = [tokenizer.vocab["1"], tokenizer.vocab["2"], tokenizer.vocab["3"], tokenizer.vocab["4"], tokenizer.vocab["5"]]
-    logits = logits[:, -2, logit_idx]  # -2: answer token, -1: eos token
-    return logits
 
+    def first_id(text: str):
+        ids = tokenizer.encode(text, add_special_tokens=False)
+        return ids[0] if ids else (tokenizer.unk_token_id or 0)
+    
+    logit_idx = [first_id("1"), first_id("2"), first_id("3"), first_id("4"), first_id("5")]
+
+    labels_t = torch.tensor(labels) if not isinstance(labels, torch.Tensor) else labels
+    mask = labels_t != -100
+    B, S = mask.shape
+    seq_idx = torch.arange(S, device=logits.device)
+    last_pos = (mask * seq_idx).argmax(dim=1).values
+
+    gathered = logits[torch.arange(B, device=logits.device), last_pos]
+    return gathered[:, logit_idx]
+
+    
 
 def compute_metrics(evaluation_result, tokenizer):
     """
@@ -26,10 +39,13 @@ def compute_metrics(evaluation_result, tokenizer):
     logits, labels = evaluation_result
 
     # 토큰화된 레이블 디코딩
-    labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
-    labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-    labels = list(map(lambda x: x.split("<end_of_turn>")[0].strip(), labels))
-    labels = list(map(lambda x: int_output_map[x], labels))
+    labels_masked = np.where(labels != -100, labels, tokenizer.pad_token_id)
+    decoded = tokenizer.batch_decode(labels_masked, skip_special_tokens=True)
+    extracted = []
+    for s in decoded:
+        ch = next((c for c in s if c in "12345"), None)
+        extracted.append(ch if ch is not None else "1")  # 기본값을 "1"로 설정
+    labels = list(map(lambda x: int_output_map[x], extracted))
 
     # 소프트맥스 함수를 사용하여 로그트 변환
     probs = torch.nn.functional.softmax(torch.tensor(logits), dim=-1)
