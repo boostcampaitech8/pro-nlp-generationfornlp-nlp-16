@@ -81,7 +81,7 @@ def get_trainer(
      변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
      이름만 바꿔주면 돌아가며 사용 가능
     """
-    trainer = FocalLossTrainer(
+    trainer = SFTTrainer(
         model=model,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,

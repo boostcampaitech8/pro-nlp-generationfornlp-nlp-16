@@ -24,7 +24,7 @@ reduction(str) : 계산된 Loss를 어떻게 합칠지 결정함 ("mean", "sum",
                 
 """
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=2.0, alpha=None, ignore_index=-100, reduction='mean'):
+    def __init__(self, gamma=2.0, alpha=1.0, ignore_index=-100, reduction='mean'):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
         self.ignore_index = ignore_index
@@ -77,14 +77,7 @@ class FocalLoss(nn.Module):
         
         # Alpha 적용 (클래스별 가중치)
         if self.alpha is not None:
-            if isinstance(self.alpha, torch.Tensor):
-                # 디바이스 맞추기
-                alpha = self.alpha.to(valid_inputs.device)
-                # 각 샘플의 클래스에 해당하는 alpha 선택
-                alpha_t = alpha[valid_targets]
-            else:
-                alpha_t = self.alpha
-            focal_weight = alpha_t * focal_weight
+            focal_weight = self.alpha * focal_weight
         
         focal_loss = focal_weight * ce_loss
 
