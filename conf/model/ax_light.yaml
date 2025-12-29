@@ -1,5 +1,5 @@
 name: "skt/A.X-4.0-Light"
-response_template: "<|im_start|>assistant"
+response_template: "<|im_start|><|assistant|>"
 peft:
   r: 8
   lora_alpha: 16
