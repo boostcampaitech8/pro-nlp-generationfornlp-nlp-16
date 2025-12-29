@@ -111,6 +111,7 @@ def main(cfg: DictConfig):
         max_seq_length=cfg.data.max_length,
         num_train_epochs=cfg.training.num_epochs,
         learning_rate=cfg.training.learning_rate,
+        warmup_ratio=cfg.training.warmup_ratio,
         per_device_train_batch_size=cfg.training.per_device_train_batch_size,
         per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
         weight_decay=cfg.training.weight_decay,
