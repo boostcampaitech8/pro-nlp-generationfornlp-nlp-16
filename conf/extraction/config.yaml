@@ -1,0 +1,43 @@
+# conf/extraction/config.yaml
+
+defaults:
+  - api: openai
+  - exam: historyexam
+  - _self_
+
+
+# 처리할 시험 목록 (batch 모드)
+exams:
+  - question_pdf: null  # 필수: 문제지 PDF 경로
+    answer_pdf: null    # 필수: 정답지 PDF 경로
+    exam_id: null       # 선택: 시험 식별자 (없으면 파일명 사용)
+
+# 예시:
+# exams:
+#   - question_pdf: "data/raw/historyexam/76회_문제.pdf"
+#     answer_pdf: "data/raw/historyexam/76회_정답.pdf"
+#     exam_id: "historyexam_76"
+#   - question_pdf: "data/raw/historyexam/77회_문제.pdf"
+#     answer_pdf: "data/raw/historyexam/77회_정답.pdf"
+#     exam_id: "historyexam_77"
+
+
+# 출력 설정
+output:
+  dir: "data/processed"
+  merge: true                    # 모든 결과를 하나의 파일로 병합
+  merge_filename: "merged.csv"   # 병합 파일명
+  keep_individual: true          # 개별 파일도 저장
+
+
+# 처리 옵션
+options:
+  save_images: false        # true면 이미지 보존
+  image_dir: "data/images"  # save_images=true일 때 저장 경로
+  
+
+# API 공통 설정
+api_common:
+  retry_count: 3
+  retry_delay: 1.0
+  request_delay: 0.5  # 요청 간 딜레이 (rate limit 방지)

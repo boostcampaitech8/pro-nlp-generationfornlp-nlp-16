@@ -1,0 +1,7 @@
+# conf/extraction/api/openai.yaml
+
+name: openai
+model: "gpt-4o"
+max_tokens: 4096
+temperature: 0
+detail: "high"  # 이미지 분석 상세도: "low", "high", "auto"
