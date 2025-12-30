@@ -10,6 +10,7 @@ from omegaconf import DictConfig
 from src.model import load_model_for_inference
 from src.inference import save_predictions
 
+
 def process_test_data_for_cot(df: pd.DataFrame) -> list:
     """test.csv 형식 데이터 전처리"""
     processed_data = []
@@ -32,6 +33,7 @@ def process_test_data_for_cot(df: pd.DataFrame) -> list:
         })
     
     return processed_data
+
 
 def find_latest_checkpoint(original_cwd: str) -> str:
     """가장 최근 체크포인트 자동 탐색"""
@@ -83,7 +85,7 @@ def get_best_checkpoint(checkpoint_path: str, checkpoint_step: str) -> str:
         raise ValueError(f"Checkpoint {target} not found")
 
 
-# [수정] Stage 1: 분석용 (question_plus 추가)
+# Stage 1: 분석용 (question_plus 포함)
 STAGE1_PROMPT = """지문:
 {paragraph}
 
@@ -112,6 +114,7 @@ def extract_answer_stage2(text: str) -> str:
         return match.group(1)
     return "1"
 
+
 def run_inference_cot_twostage(
     model, 
     tokenizer, 
@@ -139,7 +142,6 @@ def run_inference_cot_twostage(
             choices_str = choices
         
         # ===== Stage 1: 분석 생성 =====
-        # [수정] question_plus 추가
         stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
@@ -216,6 +218,7 @@ def save_predictions_cot(infer_results: list, reasoning_results: list, output_pa
     pd.DataFrame(reasoning_results).to_csv(reasoning_path, index=False)
     print(f"풀이 포함 저장: {reasoning_path}")
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     print("=" * 60)
@@ -245,7 +248,7 @@ def main(cfg: DictConfig):
     torch_dtype = cfg.inference.torch_dtype
     model, tokenizer = load_model_for_inference(checkpoint_path, torch_dtype=torch_dtype)
     
-    # 테스트 데이터 로드
+    # 테스트 데이터 로드 (test.csv)
     test_path = hydra.utils.to_absolute_path(cfg.data.test_path)
     print(f"\nLoading test data from {test_path}...")
     test_df = pd.read_csv(test_path)

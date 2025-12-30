@@ -6,7 +6,6 @@ import hydra
 import pandas as pd
 from tqdm import tqdm
 from omegaconf import DictConfig
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
 from collections import Counter
 
@@ -15,7 +14,7 @@ from src.inference import run_inference, save_predictions
 
 
 def process_for_eval(df: pd.DataFrame) -> list:
-    """train.csv 형식 데이터 전처리"""
+    """validation.csv 형식 데이터 전처리 (answer 포함)"""
     processed_data = []
     
     for _, row in df.iterrows():
@@ -67,6 +66,7 @@ def process_test_dataset_from_list(data_list: list) -> list:
     
     return test_dataset
 
+
 def evaluate_results(infer_results: list, data_list: list) -> dict:
     """예측 결과 평가"""
     id_to_answer = {d["id"]: int(d["answer"]) for d in data_list}
@@ -111,6 +111,7 @@ def print_evaluation(metrics: dict, mode: str = "기존"):
     print(f"  정답 분포: {metrics['true_distribution']}")
     print(f"  예측 분포: {metrics['pred_distribution']}")
     print("=" * 60)
+
 
 def find_checkpoint(cfg: DictConfig, original_cwd: str) -> str:
     """가장 최근 체크포인트 찾기"""
@@ -168,7 +169,7 @@ def find_checkpoint(cfg: DictConfig, original_cwd: str) -> str:
     return checkpoint_path
 
 
-# [수정] Stage 1: 분석용 (question_plus 추가)
+# Stage 1: 분석용 (question_plus 포함)
 STAGE1_PROMPT = """지문:
 {paragraph}
 
@@ -188,6 +189,7 @@ STAGE2_PROMPT = """{analysis}
 
 위 분석을 바탕으로 정답 번호만 말하세요.
 정답:"""
+
 
 def extract_answer_stage2(text: str) -> str:
     """Stage 2 출력에서 정답 추출"""
@@ -221,7 +223,6 @@ def run_inference_cot_twostage(
             choices_str = choices
         
         # ===== Stage 1: 분석 생성 =====
-        # [수정] question_plus 추가
         stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
@@ -282,13 +283,14 @@ def run_inference_cot_twostage(
     
     return results
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     cot_mode = cfg.inference.get("cot", False)
     mode_name = "Two-Stage CoT" if cot_mode else "기존"
     
     print("=" * 60)
-    print(f"📌 EVALUATION MODE: {mode_name} 방식으로 validation set 평가")
+    print(f"📌 EVALUATION MODE: {mode_name} 방식으로 validation.csv 평가")
     if cot_mode:
         print("Stage 1: 분석 생성 (200 tokens)")
         print("Stage 2: 정답 추출 (10 tokens)")
@@ -304,15 +306,10 @@ def main(cfg: DictConfig):
         torch_dtype=cfg.inference.torch_dtype
     )
     
-    train_path = hydra.utils.to_absolute_path(cfg.data.train_path)
-    print(f"\nLoading train data from {train_path}...")
-    full_df = pd.read_csv(train_path)
-    
-    _, val_df = train_test_split(
-        full_df,
-        test_size=cfg.data.get("test_size", 0.1),
-        random_state=cfg.seed
-    )
+    # [수정] validation.csv 직접 로드
+    val_path = os.path.join(original_cwd, "data", "validation.csv")
+    print(f"\nLoading validation data from {val_path}...")
+    val_df = pd.read_csv(val_path)
     print(f"Validation size: {len(val_df)}")
     
     print("Processing data...")
