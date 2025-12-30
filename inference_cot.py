@@ -1,11 +1,3 @@
-"""
-CoT (Chain of Thought) 추론 스크립트
-
-test.csv로 CoT 방식 추론 (제출용)
-
-사용법:
-    uv run python inference_cot.py
-"""
 import os
 import ast
 import re
@@ -18,29 +10,15 @@ from omegaconf import DictConfig
 from src.model import load_model_for_inference
 from src.inference import save_predictions
 
-
-# =============================================================================
-# 데이터 전처리 함수
-# =============================================================================
 def process_test_data_for_cot(df: pd.DataFrame) -> list:
-    """
-    test.csv 형식 데이터 전처리
-    
-    test.csv 구조:
-        id, paragraph, problems, question_plus
-        
-    problems 컬럼:
-        "{'question': '...', 'choices': [...]}"  (answer 없음)
-    """
+    """test.csv 형식 데이터 전처리"""
     processed_data = []
     
     for _, row in df.iterrows():
-        # problems 컬럼 파싱
         problems = row["problems"]
         if isinstance(problems, str):
             problems = ast.literal_eval(problems)
         
-        # question_plus 처리 (NaN 체크)
         question_plus = row.get("question_plus", "")
         if pd.isna(question_plus):
             question_plus = ""
@@ -55,10 +33,6 @@ def process_test_data_for_cot(df: pd.DataFrame) -> list:
     
     return processed_data
 
-
-# =============================================================================
-# 체크포인트 찾기
-# =============================================================================
 def find_latest_checkpoint(original_cwd: str) -> str:
     """가장 최근 체크포인트 자동 탐색"""
     outputs_roots = [
@@ -109,10 +83,8 @@ def get_best_checkpoint(checkpoint_path: str, checkpoint_step: str) -> str:
         raise ValueError(f"Checkpoint {target} not found")
 
 
-# =============================================================================
-# CoT 관련 함수
-# =============================================================================
-COT_PROMPT_TEMPLATE = """지문:
+# Stage 1: 분석용 (간결하게)
+STAGE1_PROMPT = """지문:
 {paragraph}
 
 질문:
@@ -121,79 +93,40 @@ COT_PROMPT_TEMPLATE = """지문:
 선택지:
 {choices}
 
-위 문제를 단계별로 분석하고 정답을 고르세요.
-
-[분석]
-1. 지문의 핵심 내용을 파악하세요.
-2. 각 선택지를 지문과 비교하세요.
-
-[중요] 분석 후 반드시 아래 형식으로 결론을 작성하세요:
-"따라서 정답은 N번이다." (N은 1, 2, 3, 4, 5 중 하나, 4번까지만 있을 수 도 있음)
+각 선택지가 맞는지 틀린지 간단히 분석하세요.
 
 분석:"""
 
+# Stage 2: 정답 추출용
+STAGE2_PROMPT = """{analysis}
 
-def extract_answer_improved(text: str) -> str:
+위 분석을 바탕으로 정답 번호만 말하세요.
+정답:"""
 
-    patterns_p1 = [
-        r'정답[은는이가]?\s*(\d)\s*번',
-        r'정답\s*[:\-]\s*(\d)',
-        r'정답\s*(\d)\s*번',
-    ]
-    for pattern in patterns_p1:
-        match = re.search(pattern, text)
-        if match and match.group(1) in '12345':
-            return match.group(1)
-    
-    patterns_p2 = [
-        r'(\d)번이다',
-        r'(\d)번입니다',
-        r'(\d)번이\s*정답',
-        r'(\d)번이\s*맞',
-        r'(\d)번이\s*적절',
-        r'(\d)번이\s*옳',
-    ]
-    for pattern in patterns_p2:
-        match = re.search(pattern, text)
-        if match and match.group(1) in '12345':
-            return match.group(1)
-    
-    match = re.search(r'따라서[^.]*?(\d)\s*번', text)
-    if match and match.group(1) in '12345':
+
+def extract_answer_stage2(text: str) -> str:
+    """Stage 2 출력에서 정답 추출 (숫자만 나옴)"""
+    # 첫 번째 1-5 숫자 찾기
+    match = re.search(r'([1-5])', text)
+    if match:
         return match.group(1)
-    
-    sentences = text.strip().split('.')
-    for sent in reversed(sentences):
-        if sent.strip():
-            match = re.search(r'(\d)\s*번', sent)
-            if match and match.group(1) in '12345':
-                return match.group(1)
-    
-    lines = text.strip().split('\n')
-    for line in reversed(lines):
-        if line.strip():
-            match = re.search(r'(\d)\s*번', line)
-            if match and match.group(1) in '12345':
-                return match.group(1)
-    
     return "1"
 
-
-def run_inference_cot(
+def run_inference_cot_twostage(
     model, 
     tokenizer, 
     data_list: list,
-    max_new_tokens: int = 300,
-    temperature: float = 0.3,
+    stage1_max_tokens: int = 200,  # 분석 (300→200 줄임)
+    stage2_max_tokens: int = 10,   # 정답만
     verbose: bool = True,
 ) -> tuple:
-    """CoT 방식 추론"""
+    """Two-Stage CoT 추론"""
     infer_results = []
     reasoning_results = []
     
     model.eval()
     
-    for idx, data in enumerate(tqdm(data_list, desc="CoT Inference")):
+    for idx, data in enumerate(tqdm(data_list, desc="Two-Stage CoT")):
         _id = data["id"]
         paragraph = data["paragraph"]
         question = data["question"]
@@ -204,65 +137,90 @@ def run_inference_cot(
         else:
             choices_str = choices
         
-        prompt = COT_PROMPT_TEMPLATE.format(
+        # ===== Stage 1: 분석 생성 =====
+        stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
             choices=choices_str,
         )
         
-        messages = [{"role": "user", "content": prompt}]
-        inputs = tokenizer.apply_chat_template(
-            messages,
+        messages1 = [{"role": "user", "content": stage1_prompt}]
+        inputs1 = tokenizer.apply_chat_template(
+            messages1,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
         ).to(model.device)
         
         with torch.no_grad():
-            outputs = model.generate(
-                inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                do_sample=True,
+            outputs1 = model.generate(
+                inputs1,
+                max_new_tokens=stage1_max_tokens,
+                do_sample=False,  # greedy (빠르고 일관됨)
                 pad_token_id=tokenizer.pad_token_id,
             )
         
-        generated = tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
-        answer = extract_answer(generated)
+        analysis = tokenizer.decode(outputs1[0][inputs1.shape[1]:], skip_special_tokens=True)
+        
+        # ===== Stage 2: 정답만 추출 =====
+        stage2_prompt = STAGE2_PROMPT.format(analysis=analysis)
+        
+        messages2 = [{"role": "user", "content": stage2_prompt}]
+        inputs2 = tokenizer.apply_chat_template(
+            messages2,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        ).to(model.device)
+        
+        with torch.no_grad():
+            outputs2 = model.generate(
+                inputs2,
+                max_new_tokens=stage2_max_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+        
+        answer_text = tokenizer.decode(outputs2[0][inputs2.shape[1]:], skip_special_tokens=True)
+        answer = extract_answer_stage2(answer_text)
         
         infer_results.append({"id": _id, "answer": answer})
-        reasoning_results.append({"id": _id, "answer": answer, "reasoning": generated})
+        reasoning_results.append({
+            "id": _id, 
+            "answer": answer, 
+            "analysis": analysis,
+            "answer_raw": answer_text,
+        })
         
         # 처음 3개 샘플 출력
         if verbose and idx < 3:
-            print(f"\n[샘플 {idx+1}] 생성: {generated[:200]}...")
+            print(f"\n{'='*60}")
+            print(f"[샘플 {idx+1}]")
+            print(f"Stage1 분석 (마지막 150자): ...{analysis[-150:]}")
+            print(f"Stage2 출력: '{answer_text}'")
             print(f"추출된 정답: {answer}")
+            print(f"{'='*60}")
     
     return infer_results, reasoning_results
 
 
 def save_predictions_cot(infer_results: list, reasoning_results: list, output_path: str):
     """CoT 결과 저장"""
-    # 제출용 (id, answer)
     pd.DataFrame(infer_results).to_csv(output_path, index=False)
     print(f"제출용 저장: {output_path}")
     
-    # 풀이 포함 (분석용)
     reasoning_path = output_path.replace(".csv", "_reasoning.csv")
     pd.DataFrame(reasoning_results).to_csv(reasoning_path, index=False)
     print(f"풀이 포함 저장: {reasoning_path}")
 
-
-# =============================================================================
-# 메인
-# =============================================================================
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     print("=" * 60)
-    print("CoT (Chain of Thought) Prompting Inference")
+    print("Two-Stage CoT Inference")
+    print("Stage 1: 분석 생성 (200 tokens)")
+    print("Stage 2: 정답 추출 (10 tokens)")
     print("=" * 60)
     
-    # 체크포인트 찾기
     original_cwd = hydra.utils.get_original_cwd()
     
     checkpoint_path = cfg.inference.checkpoint_dir
@@ -277,7 +235,6 @@ def main(cfg: DictConfig):
         checkpoint_path = hydra.utils.to_absolute_path(checkpoint_path)
     
     checkpoint_path = get_best_checkpoint(checkpoint_path, checkpoint_step)
-    
     print(f"Using checkpoint: {checkpoint_path}")
     
     # 모델 로드
@@ -291,17 +248,17 @@ def main(cfg: DictConfig):
     test_df = pd.read_csv(test_path)
     print(f"Test size: {len(test_df)}")
     
-    # 데이터 전처리 (problems 컬럼 파싱)
+    # 데이터 전처리
     test_dataset = process_test_data_for_cot(test_df)
     
-    # CoT 추론
-    print("\nRunning CoT inference...")
-    infer_results, reasoning_results = run_inference_cot(
+    # Two-Stage 추론
+    print("\nRunning Two-Stage CoT inference...")
+    infer_results, reasoning_results = run_inference_cot_twostage(
         model=model,
         tokenizer=tokenizer,
         data_list=test_dataset,
-        max_new_tokens=150,
-        temperature=0.3,
+        stage1_max_tokens=200,
+        stage2_max_tokens=10,
         verbose=True,
     )
     
@@ -311,10 +268,10 @@ def main(cfg: DictConfig):
     save_predictions_cot(infer_results, reasoning_results, output_path)
     
     print(f"\n{'='*60}")
-    print("CoT Inference completed!")
-    print(f"Results saved to: {os.getcwd()}/{output_path}")
+    print("Two-Stage CoT Inference completed!")
     print(f"{'='*60}")
 
 
 if __name__ == "__main__":
     main()
+

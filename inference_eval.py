@@ -1,12 +1,3 @@
-"""
-Inference 평가 스크립트 (기존 inference.py 수정 없이)
-
-기존 inference 로직을 그대로 사용하면서 validation set으로 평가만 추가
-
-사용법:
-    python inference_eval.py                    # 기존 방식 평가
-    python inference_eval.py inference.cot=true # CoT 방식 평가
-"""
 import os
 import ast
 import re
@@ -23,28 +14,15 @@ from src.model import load_model_for_inference
 from src.inference import run_inference, save_predictions
 
 
-# =============================================================================
-# 데이터 전처리 함수
-# =============================================================================
 def process_for_eval(df: pd.DataFrame) -> list:
-    """
-    train.csv 형식 데이터 전처리
-    
-    train.csv 구조:
-        id, paragraph, problems, question_plus
-        
-    problems 컬럼:
-        "{'question': '...', 'choices': [...], 'answer': 1}"
-    """
+    """train.csv 형식 데이터 전처리"""
     processed_data = []
     
     for _, row in df.iterrows():
-        # problems 컬럼 파싱
         problems = row["problems"]
         if isinstance(problems, str):
             problems = ast.literal_eval(problems)
         
-        # question_plus 처리 (NaN 체크)
         question_plus = row.get("question_plus", "")
         if pd.isna(question_plus):
             question_plus = ""
@@ -62,10 +40,7 @@ def process_for_eval(df: pd.DataFrame) -> list:
 
 
 def process_test_dataset_from_list(data_list: list) -> list:
-    """
-    기존 inference용 데이터셋 생성
-    run_inference()가 기대하는 형식으로 변환
-    """
+    """기존 inference용 데이터셋 생성"""
     test_dataset = []
     
     for data in data_list:
@@ -75,10 +50,8 @@ def process_test_dataset_from_list(data_list: list) -> list:
         choices = data["choices"]
         question_plus = data.get("question_plus", "")
         
-        # 선택지 문자열 생성
         choices_str = "\n".join([f"{idx+1} - {choice}" for idx, choice in enumerate(choices)])
         
-        # 프롬프트 생성
         if question_plus:
             user_content = f"지문을 읽고 질문의 답을 구하세요.\n\n지문:\n{paragraph}\n\n질문:\n{question}\n\n{question_plus}\n\n선택지:\n{choices_str}\n\n1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.\n정답:"
         else:
@@ -94,13 +67,8 @@ def process_test_dataset_from_list(data_list: list) -> list:
     
     return test_dataset
 
-
-# =============================================================================
-# 평가 함수
-# =============================================================================
 def evaluate_results(infer_results: list, data_list: list) -> dict:
-    """예측 결과 평가 (Accuracy, Macro F1)"""
-    # id → 정답 매핑
+    """예측 결과 평가"""
     id_to_answer = {d["id"]: int(d["answer"]) for d in data_list}
     
     y_true = []
@@ -144,10 +112,6 @@ def print_evaluation(metrics: dict, mode: str = "기존"):
     print(f"  예측 분포: {metrics['pred_distribution']}")
     print("=" * 60)
 
-
-# =============================================================================
-# 체크포인트 찾기
-# =============================================================================
 def find_checkpoint(cfg: DictConfig, original_cwd: str) -> str:
     """가장 최근 체크포인트 찾기"""
     checkpoint_path = cfg.inference.checkpoint_dir
@@ -204,10 +168,8 @@ def find_checkpoint(cfg: DictConfig, original_cwd: str) -> str:
     return checkpoint_path
 
 
-# =============================================================================
-# CoT 관련 함수
-# =============================================================================
-COT_PROMPT_TEMPLATE = """지문:
+# Stage 1: 분석용
+STAGE1_PROMPT = """지문:
 {paragraph}
 
 질문:
@@ -216,69 +178,36 @@ COT_PROMPT_TEMPLATE = """지문:
 선택지:
 {choices}
 
-위 문제를 분석하고 정답을 고르세요.
-
-[분석]
-1. 지문의 핵심 내용을 파악하세요.
-2. 각 선택지를 지문과 비교하세요.
-
-[중요] 분석 후 반드시 아래 형식으로 결론을 작성하세요:
-"따라서 정답은 N번이다." (N은 1, 2, 3, 4, 5 중 하나, 4번까지 있을 수도 있음)
+각 선택지가 맞는지 틀린지 간단히 분석하세요.
 
 분석:"""
 
-def extract_answer_improved(text: str) -> str:
+# Stage 2: 정답 추출용
+STAGE2_PROMPT = """{analysis}
 
-    patterns_p1 = [
-        r'정답[은는이가]?\s*(\d)\s*번',
-        r'정답\s*[:\-]\s*(\d)',
-        r'정답\s*(\d)\s*번',
-    ]
-    for pattern in patterns_p1:
-        match = re.search(pattern, text)
-        if match and match.group(1) in '12345':
-            return match.group(1)
-    
-    patterns_p2 = [
-        r'(\d)번이다',
-        r'(\d)번입니다',
-        r'(\d)번이\s*정답',
-        r'(\d)번이\s*맞',
-        r'(\d)번이\s*적절',
-        r'(\d)번이\s*옳',
-    ]
-    for pattern in patterns_p2:
-        match = re.search(pattern, text)
-        if match and match.group(1) in '12345':
-            return match.group(1)
-    
-    match = re.search(r'따라서[^.]*?(\d)\s*번', text)
-    if match and match.group(1) in '12345':
+위 분석을 바탕으로 정답 번호만 말하세요.
+정답:"""
+
+def extract_answer_stage2(text: str) -> str:
+    """Stage 2 출력에서 정답 추출"""
+    match = re.search(r'([1-5])', text)
+    if match:
         return match.group(1)
-    
-    sentences = text.strip().split('.')
-    for sent in reversed(sentences):
-        if sent.strip():
-            match = re.search(r'(\d)\s*번', sent)
-            if match and match.group(1) in '12345':
-                return match.group(1)
-    
-    lines = text.strip().split('\n')
-    for line in reversed(lines):
-        if line.strip():
-            match = re.search(r'(\d)\s*번', line)
-            if match and match.group(1) in '12345':
-                return match.group(1)
-    
     return "1"
 
 
-def run_inference_cot(model, tokenizer, data_list: list) -> list:
-    """CoT 방식 추론"""
+def run_inference_cot_twostage(
+    model, 
+    tokenizer, 
+    data_list: list,
+    stage1_max_tokens: int = 200,
+    stage2_max_tokens: int = 10,
+) -> list:
+    """Two-Stage CoT 추론"""
     results = []
     model.eval()
     
-    for idx, data in enumerate(tqdm(data_list, desc="CoT Inference")):
+    for idx, data in enumerate(tqdm(data_list, desc="Two-Stage CoT")):
         _id = data["id"]
         paragraph = data["paragraph"]
         question = data["question"]
@@ -289,68 +218,88 @@ def run_inference_cot(model, tokenizer, data_list: list) -> list:
         else:
             choices_str = choices
         
-        prompt = COT_PROMPT_TEMPLATE.format(
+        # ===== Stage 1: 분석 생성 =====
+        stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
             choices=choices_str,
         )
         
-        messages = [{"role": "user", "content": prompt}]
-        inputs = tokenizer.apply_chat_template(
-            messages,
+        messages1 = [{"role": "user", "content": stage1_prompt}]
+        inputs1 = tokenizer.apply_chat_template(
+            messages1,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
         ).to(model.device)
         
         with torch.no_grad():
-            outputs = model.generate(
-                inputs,
-                max_new_tokens=300,
-                temperature=0.3,
-                do_sample=True,
+            outputs1 = model.generate(
+                inputs1,
+                max_new_tokens=stage1_max_tokens,
+                do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
             )
         
-        generated = tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
-        answer = extract_answer_improved(generated)
+        analysis = tokenizer.decode(outputs1[0][inputs1.shape[1]:], skip_special_tokens=True)
+        
+        # ===== Stage 2: 정답만 추출 =====
+        stage2_prompt = STAGE2_PROMPT.format(analysis=analysis)
+        
+        messages2 = [{"role": "user", "content": stage2_prompt}]
+        inputs2 = tokenizer.apply_chat_template(
+            messages2,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        ).to(model.device)
+        
+        with torch.no_grad():
+            outputs2 = model.generate(
+                inputs2,
+                max_new_tokens=stage2_max_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+        
+        answer_text = tokenizer.decode(outputs2[0][inputs2.shape[1]:], skip_special_tokens=True)
+        answer = extract_answer_stage2(answer_text)
         
         results.append({"id": _id, "answer": answer})
         
         # 처음 3개 샘플 출력
         if idx < 3:
-            print(f"\n[샘플 {idx+1}] 생성: {generated[:200]}...")
+            print(f"\n{'='*60}")
+            print(f"[샘플 {idx+1}]")
+            print(f"Stage1 분석 (마지막 150자): ...{analysis[-150:]}")
+            print(f"Stage2 출력: '{answer_text}'")
             print(f"추출된 정답: {answer}")
+            print(f"{'='*60}")
     
     return results
 
-
-# =============================================================================
-# 메인
-# =============================================================================
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
-    # CoT 모드 확인
     cot_mode = cfg.inference.get("cot", False)
-    mode_name = "CoT" if cot_mode else "기존"
+    mode_name = "Two-Stage CoT" if cot_mode else "기존"
     
     print("=" * 60)
     print(f"📌 EVALUATION MODE: {mode_name} 방식으로 validation set 평가")
+    if cot_mode:
+        print("Stage 1: 분석 생성 (200 tokens)")
+        print("Stage 2: 정답 추출 (10 tokens)")
     print("=" * 60)
     
-    # 체크포인트 찾기
     original_cwd = hydra.utils.get_original_cwd()
     checkpoint_path = find_checkpoint(cfg, original_cwd)
     print(f"Checkpoint: {checkpoint_path}")
     
-    # 모델 로드
     print("\nLoading model...")
     model, tokenizer = load_model_for_inference(
         checkpoint_path, 
         torch_dtype=cfg.inference.torch_dtype
     )
     
-    # Validation 데이터 로드 (train에서 split)
     train_path = hydra.utils.to_absolute_path(cfg.data.train_path)
     print(f"\nLoading train data from {train_path}...")
     full_df = pd.read_csv(train_path)
@@ -362,27 +311,21 @@ def main(cfg: DictConfig):
     )
     print(f"Validation size: {len(val_df)}")
     
-    # 데이터 전처리 (problems 컬럼 파싱)
     print("Processing data...")
     data_list = process_for_eval(val_df)
     
-    # 추론
     print(f"\nRunning {mode_name} inference...")
     
     if cot_mode:
-        # CoT 방식
-        infer_results = run_inference_cot(model, tokenizer, data_list)
+        infer_results = run_inference_cot_twostage(model, tokenizer, data_list)
     else:
-        # 기존 방식
         test_dataset = process_test_dataset_from_list(data_list)
         infer_results = run_inference(model, tokenizer, test_dataset)
     
-    # 평가
     metrics = evaluate_results(infer_results, data_list)
     print_evaluation(metrics, mode=mode_name)
     
-    # 저장
-    output_path = f"output_eval_{mode_name}.csv"
+    output_path = f"output_eval_{mode_name.replace(' ', '_')}.csv"
     save_predictions(infer_results, output_path)
     print(f"\nSaved to: {os.getcwd()}/{output_path}")
 
