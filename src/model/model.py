@@ -92,6 +92,11 @@ def load_model_for_inference(checkpoint_path: str, torch_dtype: str = "float16",
         torch_dtype: Data type for model weights ('float16', 'bfloat16', 'float32', or 'auto')
         quantization_config: Dict containing bitsandbytes configuration
     """
+    # 일부 transformers 버전에서 config.quantization_config가 None일 때 __repr__ 호출 중 to_dict() 에러가 발생하는 경우가 있어
+    # INFO 로그를 끄고 로딩한다.
+    from transformers import logging as hf_logging
+    hf_logging.set_verbosity_warning()
+
     # Convert string dtype to torch dtype
     dtype_mapping = {
         "float16": torch.float16,
@@ -111,12 +116,19 @@ def load_model_for_inference(checkpoint_path: str, torch_dtype: str = "float16",
         )
         print(f'Applying 4-bit QUantization for Inference: {bnb_config}')
 
+    # transformers/peft 조합에서 quantization_config가 None일 때 __repr__ 경로로 to_dict()가 호출되어 터지는 케이스가 있어
+    # quantization_config가 있을 때만 인자로 전달한다.
+    peft_kwargs = {
+        "trust_remote_code": True,
+        "torch_dtype": dtype,
+        "device_map": {"": 0},  # single GPU일 때만 명시
+    }
+    if bnb_config:
+        peft_kwargs["quantization_config"] = bnb_config
+
     model = AutoPeftModelForCausalLM.from_pretrained(
         checkpoint_path,
-        trust_remote_code=True,
-        torch_dtype=dtype,
-        quantization_config=bnb_config,
-        device_map={"": 0}, # single GPU일 때만 명시
+        **peft_kwargs,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         checkpoint_path,
