@@ -83,12 +83,13 @@ def get_best_checkpoint(checkpoint_path: str, checkpoint_step: str) -> str:
         raise ValueError(f"Checkpoint {target} not found")
 
 
-# Stage 1: 분석용 (간결하게)
+# [수정] Stage 1: 분석용 (question_plus 추가)
 STAGE1_PROMPT = """지문:
 {paragraph}
 
 질문:
 {question}
+{question_plus}
 
 선택지:
 {choices}
@@ -106,7 +107,6 @@ STAGE2_PROMPT = """{analysis}
 
 def extract_answer_stage2(text: str) -> str:
     """Stage 2 출력에서 정답 추출 (숫자만 나옴)"""
-    # 첫 번째 1-5 숫자 찾기
     match = re.search(r'([1-5])', text)
     if match:
         return match.group(1)
@@ -116,8 +116,8 @@ def run_inference_cot_twostage(
     model, 
     tokenizer, 
     data_list: list,
-    stage1_max_tokens: int = 200,  # 분석 (300→200 줄임)
-    stage2_max_tokens: int = 10,   # 정답만
+    stage1_max_tokens: int = 200,
+    stage2_max_tokens: int = 10,
     verbose: bool = True,
 ) -> tuple:
     """Two-Stage CoT 추론"""
@@ -131,6 +131,7 @@ def run_inference_cot_twostage(
         paragraph = data["paragraph"]
         question = data["question"]
         choices = data["choices"]
+        question_plus = data.get("question_plus", "")
         
         if isinstance(choices, list):
             choices_str = "\n".join([f"{i+1} - {c}" for i, c in enumerate(choices)])
@@ -138,9 +139,11 @@ def run_inference_cot_twostage(
             choices_str = choices
         
         # ===== Stage 1: 분석 생성 =====
+        # [수정] question_plus 추가
         stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
+            question_plus=question_plus,
             choices=choices_str,
         )
         
@@ -156,7 +159,7 @@ def run_inference_cot_twostage(
             outputs1 = model.generate(
                 inputs1,
                 max_new_tokens=stage1_max_tokens,
-                do_sample=False,  # greedy (빠르고 일관됨)
+                do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
             )
         
@@ -274,4 +277,3 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
-

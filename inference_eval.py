@@ -168,12 +168,13 @@ def find_checkpoint(cfg: DictConfig, original_cwd: str) -> str:
     return checkpoint_path
 
 
-# Stage 1: 분석용
+# [수정] Stage 1: 분석용 (question_plus 추가)
 STAGE1_PROMPT = """지문:
 {paragraph}
 
 질문:
 {question}
+{question_plus}
 
 선택지:
 {choices}
@@ -212,6 +213,7 @@ def run_inference_cot_twostage(
         paragraph = data["paragraph"]
         question = data["question"]
         choices = data["choices"]
+        question_plus = data.get("question_plus", "")
         
         if isinstance(choices, list):
             choices_str = "\n".join([f"{i+1} - {c}" for i, c in enumerate(choices)])
@@ -219,9 +221,11 @@ def run_inference_cot_twostage(
             choices_str = choices
         
         # ===== Stage 1: 분석 생성 =====
+        # [수정] question_plus 추가
         stage1_prompt = STAGE1_PROMPT.format(
             paragraph=paragraph,
             question=question,
+            question_plus=question_plus,
             choices=choices_str,
         )
         
