@@ -4,7 +4,7 @@ CoT (Chain of Thought) 추론 스크립트
 test.csv로 CoT 방식 추론 (제출용)
 
 사용법:
-    python inference_cot.py
+    uv run python inference_cot.py
 """
 import os
 import ast
@@ -121,27 +121,60 @@ COT_PROMPT_TEMPLATE = """지문:
 선택지:
 {choices}
 
-위 문제를 단계별로 분석하세요.
-1. 지문에서 관련 정보를 찾으세요.
-2. 각 선택지를 검토하세요.
-3. 마지막에 "따라서 정답은 N번이다."로 끝내세요.
+위 문제를 단계별로 분석하고 정답을 고르세요.
+
+[분석]
+1. 지문의 핵심 내용을 파악하세요.
+2. 각 선택지를 지문과 비교하세요.
+
+[중요] 분석 후 반드시 아래 형식으로 결론을 작성하세요:
+"따라서 정답은 N번이다." (N은 1, 2, 3, 4, 5 중 하나, 4번까지만 있을 수 도 있음)
 
 분석:"""
 
 
-def extract_answer(text: str) -> str:
-    """생성된 텍스트에서 정답 추출"""
-    match = re.search(r'정답[은는이가]?\s*(\d)\s*번?', text)
-    if match:
+def extract_answer_improved(text: str) -> str:
+
+    patterns_p1 = [
+        r'정답[은는이가]?\s*(\d)\s*번',
+        r'정답\s*[:\-]\s*(\d)',
+        r'정답\s*(\d)\s*번',
+    ]
+    for pattern in patterns_p1:
+        match = re.search(pattern, text)
+        if match and match.group(1) in '12345':
+            return match.group(1)
+    
+    patterns_p2 = [
+        r'(\d)번이다',
+        r'(\d)번입니다',
+        r'(\d)번이\s*정답',
+        r'(\d)번이\s*맞',
+        r'(\d)번이\s*적절',
+        r'(\d)번이\s*옳',
+    ]
+    for pattern in patterns_p2:
+        match = re.search(pattern, text)
+        if match and match.group(1) in '12345':
+            return match.group(1)
+    
+    match = re.search(r'따라서[^.]*?(\d)\s*번', text)
+    if match and match.group(1) in '12345':
         return match.group(1)
     
-    match = re.search(r'(\d)번이다', text)
-    if match:
-        return match.group(1)
+    sentences = text.strip().split('.')
+    for sent in reversed(sentences):
+        if sent.strip():
+            match = re.search(r'(\d)\s*번', sent)
+            if match and match.group(1) in '12345':
+                return match.group(1)
     
-    numbers = re.findall(r'[1-5]', text)
-    if numbers:
-        return numbers[-1]
+    lines = text.strip().split('\n')
+    for line in reversed(lines):
+        if line.strip():
+            match = re.search(r'(\d)\s*번', line)
+            if match and match.group(1) in '12345':
+                return match.group(1)
     
     return "1"
 
@@ -150,7 +183,7 @@ def run_inference_cot(
     model, 
     tokenizer, 
     data_list: list,
-    max_new_tokens: int = 150,
+    max_new_tokens: int = 300,
     temperature: float = 0.3,
     verbose: bool = True,
 ) -> tuple:
