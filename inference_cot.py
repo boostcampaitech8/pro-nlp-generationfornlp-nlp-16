@@ -156,6 +156,9 @@ def run_inference_cot(
     infer_results = []
     reasoning_results = []
     
+    # Negative 문제 패턴
+    negative_patterns = ["않는 것", "않은 것", "아닌 것", "적절하지 않은", "옳지 않은", "일치하지 않는", "잘못된 것", "틀린 것", "부적절한"]
+    
     model.eval()
     
     for idx, data in enumerate(tqdm(data_list, desc="CoT Inference")):
@@ -185,8 +188,16 @@ def run_inference_cot(
                 choices=choices_str,
             )
         
+        # Negative 문제 감지
+        is_negative = any(p in question for p in negative_patterns)
+        
+        if is_negative:
+            system_content = "지문을 읽고 질문의 답을 구하세요. 주의: 이 문제는 '틀린 것' 또는 '적절하지 않은 것'을 찾는 문제입니다. 지문과 일치하지 않는 선택지를 고르세요."
+        else:
+            system_content = "지문을 읽고 질문의 답을 구하세요."
+        
         messages = [
-            {"role": "system", "content": "지문을 읽고 질문의 답을 구하세요."},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt}
         ]
         
