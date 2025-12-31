@@ -1,7 +1,7 @@
 # 실행할 때마다 checkpoint_dir을 명시
 # 예시: checkpoint_dir: "./output/checkpoint-5000"
 # 지정 안해주면 "best" checkpoint 사용 -> 가장 번호가 높은 체크포인트 알아서 로드
-checkpoint_dir: "LGAI-EXAONE/EXAONE-4.0-32B" 
+checkpoint_dir: "LGAI-EXAONE/EXAONE-4.0-32B-GPTQ" 
 checkpoint_step: "best"
 output_file: "output.csv"
 torch_dtype: "float16"
