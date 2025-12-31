@@ -61,7 +61,14 @@ def main(cfg: DictConfig):
     # Load model and tokenizer
     print("Loading model and tokenizer...")
     torch_dtype = cfg.model.get('torch_dtype', 'float16')
-    model, tokenizer = load_model_and_tokenizer(cfg.model.name, torch_dtype=torch_dtype)
+    quant_config = OmegaConf.to_container(cfg.model.quantization, resolve=True) \
+        if hasattr(cfg.model, 'quantization') else None
+    
+    model, tokenizer = load_model_and_tokenizer(
+        cfg.model.name, 
+        torch_dtype=torch_dtype,
+        quantization_config=quant_config
+    )
 
     # Tokenize dataset
     print("Tokenizing dataset...")
@@ -104,6 +111,7 @@ def main(cfg: DictConfig):
         max_seq_length=cfg.data.max_length,
         num_train_epochs=cfg.training.num_epochs,
         learning_rate=cfg.training.learning_rate,
+        warmup_ratio=cfg.training.warmup_ratio,
         per_device_train_batch_size=cfg.training.per_device_train_batch_size,
         per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
         weight_decay=cfg.training.weight_decay,

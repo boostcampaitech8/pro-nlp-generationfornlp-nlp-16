@@ -23,48 +23,48 @@ def main(cfg: DictConfig):
 
     if not checkpoint_path:
         print("Checkpoint path is empty. Searching for the latest checkpoint in 'outputs/'...")
-    
-    # [중요] Hydra가 작업 경로를 바꿨으므로, 원래 실행했던 위치(프로젝트 루트)를 알아내야 함
-    original_cwd = hydra.utils.get_original_cwd()
-    outputs_roots = [
-        os.path.join(original_cwd, "outputs"),            # 기본 경로
-        os.path.join(original_cwd, "outputs", "train"),   # 학습 스크립트가 하위 train 폴더를 쓰는 경우 대응
-    ]
 
-    found_path = None
-    for outputs_root in outputs_roots:
-        if not os.path.exists(outputs_root):
-            continue
+        # [중요] Hydra가 작업 경로를 바꿨으므로, 원래 실행했던 위치(프로젝트 루트)를 알아내야 함
+        original_cwd = hydra.utils.get_original_cwd()
+        outputs_roots = [
+            os.path.join(original_cwd, "outputs"),            # 기본 경로
+            os.path.join(original_cwd, "outputs", "train"),   # 학습 스크립트가 하위 train 폴더를 쓰는 경우 대응
+        ]
 
-        # 1차 분류: 날짜별 폴더 (예: 2024-05-20) -> 최신 날짜부터 정렬(reverse=True)
-        dates = sorted([d for d in os.listdir(outputs_root) if os.path.isdir(os.path.join(outputs_root, d))], reverse=True)
-        
-        for date in dates:
-            date_dir = os.path.join(outputs_root, date)
-            # 2차 분류: 시간별 폴더 (예: 14-30-00) -> 최신 시간부터 정렬
-            times = sorted([t for t in os.listdir(date_dir) if os.path.isdir(os.path.join(date_dir, t))], reverse=True)
+        found_path = None
+        for outputs_root in outputs_roots:
+            if not os.path.exists(outputs_root):
+                continue
+
+            # 1차 분류: 날짜별 폴더 (예: 2024-05-20) -> 최신 날짜부터 정렬(reverse=True)
+            dates = sorted([d for d in os.listdir(outputs_root) if os.path.isdir(os.path.join(outputs_root, d))], reverse=True)
             
-            for time in times:
-                run_dir = os.path.join(date_dir, time)
+            for date in dates:
+                date_dir = os.path.join(outputs_root, date)
+                # 2차 분류: 시간별 폴더 (예: 14-30-00) -> 최신 시간부터 정렬
+                times = sorted([t for t in os.listdir(date_dir) if os.path.isdir(os.path.join(date_dir, t))], reverse=True)
                 
-                # [핵심 검증] 그냥 폴더만 있다고 되는 게 아니라, 
-                # 그 안에 진짜 'checkpoint-'로 시작하는 모델 파일이 있는지 확인
-                # (방금 막 실행해서 비어있는 폴더나, 에러나서 꺼진 폴더는 무시하기 위함)
-                if any(d.startswith("checkpoint-") for d in os.listdir(run_dir)):
-                    found_path = run_dir # 찾았다!
+                for time in times:
+                    run_dir = os.path.join(date_dir, time)
+                    
+                    # [핵심 검증] 그냥 폴더만 있다고 되는 게 아니라, 
+                    # 그 안에 진짜 'checkpoint-'로 시작하는 모델 파일이 있는지 확인
+                    # (방금 막 실행해서 비어있는 폴더나, 에러나서 꺼진 폴더는 무시하기 위함)
+                    if any(d.startswith("checkpoint-") for d in os.listdir(run_dir)):
+                        found_path = run_dir # 찾았다!
+                        break
+                if found_path:
                     break
             if found_path:
                 break
+        
+        # 찾은 경로 적용
         if found_path:
-            break
-    
-    # 찾은 경로 적용
-    if found_path:
-        checkpoint_path = found_path
-        print(f"Auto-detected latest run with checkpoint: {checkpoint_path}")
-    else:
-        # 다 뒤졌는데 없으면 에러 발생
-        raise ValueError("Checkpoint path is empty and no previous checkpoints were found...")
+            checkpoint_path = found_path
+            print(f"Auto-detected latest run with checkpoint: {checkpoint_path}")
+        else:
+            # 다 뒤졌는데 없으면 에러 발생
+            raise ValueError("Checkpoint path is empty and no previous checkpoints were found...")
 
     if not checkpoint_path:
         raise ValueError("Checkpoint path must be specified (inference.checkpoint_dir)")
@@ -100,7 +100,13 @@ def main(cfg: DictConfig):
     # Load model
     print("Loading model from checkpoint...")
     torch_dtype = cfg.inference.torch_dtype
-    model, tokenizer = load_model_for_inference(checkpoint_path, torch_dtype=torch_dtype)
+    quant_config = OmegaConf.to_container(cfg.model.quantization, resolve=True) \
+        if hasattr(cfg.model, "quantization") else None
+    model, tokenizer = load_model_for_inference(
+        checkpoint_path,
+        torch_dtype=torch_dtype,
+        quantization_config=quant_config,
+    )
 
     # Load and preprocess test data
     print("Loading test data...")
