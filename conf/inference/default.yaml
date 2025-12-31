@@ -7,3 +7,4 @@ output_file: "output.csv"
 torch_dtype: "float16"
 use_huggingface: false
 enable_thinking: false
+use_peft: true

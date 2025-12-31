@@ -138,8 +138,9 @@ def main(cfg: DictConfig):
     # Load model
     print("Loading model from checkpoint...")
     torch_dtype = cfg.inference.torch_dtype
+    use_peft = cfg.inference.get("use_peft", True)
     model, tokenizer = load_model_for_inference(
-        checkpoint_path, torch_dtype=torch_dtype
+        checkpoint_path, torch_dtype=torch_dtype, use_peft=use_peft
     )
 
     # Load and preprocess test data
