@@ -6,7 +6,6 @@ from datasets import Dataset
 def load_train_data(train_path: str) -> pd.DataFrame:
     """
     Load the train dataset
-    [수정] reasoning 컬럼 추가
     """
     dataset = pd.read_csv(train_path)
 
@@ -21,14 +20,10 @@ def load_train_data(train_path: str) -> pd.DataFrame:
             'choices': problems['choices'],
             'answer': problems.get('answer', None),
             "question_plus": problems.get('question_plus', None),
-            "reasoning": row.get('reasoning', None),  # [추가] reasoning 컬럼
         }
-        # Include 'question_plus' if it exists in problems
+        # Include 'question_plus' if it exists
         if 'question_plus' in problems:
             record['question_plus'] = problems['question_plus']
-        # Include 'question_plus' if it exists in row (원본 CSV)
-        if 'question_plus' in row and pd.notna(row['question_plus']):
-            record['question_plus'] = row['question_plus']
         records.append(record)
 
     # Convert to DataFrame

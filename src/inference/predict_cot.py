@@ -65,7 +65,7 @@ def generate_cot_response(
 
         generated = tokenizer.decode(
             outputs[0][inputs.shape[1]:],
-            skip_special_tokens=Ture
+            skip_special_tokens=True
         )
 
         return generated
@@ -76,6 +76,7 @@ def run_inference_cot(
     test_dataset: list,
     max_new_tokens: int = 150,
     temperature: float = 0.3,
+    verbose: bool = True,
 ) -> list:
 
     infer_results = []
@@ -127,7 +128,7 @@ def run_inference_cot(
             print(f"추출된 정답: {answer}")
             print(f"{'='*50}")
 
-        return infer_results, reasoning_results
+    return infer_results, reasoning_results
 
 def save_predictions_cot(
     infer_results:list,

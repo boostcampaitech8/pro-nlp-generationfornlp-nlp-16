@@ -20,8 +20,9 @@ def process_test_data_for_cot(df: pd.DataFrame) -> list:
         if isinstance(problems, str):
             problems = ast.literal_eval(problems)
         
+        # question_plus는 row 레벨에 있음! (problems 안이 아님)
         question_plus = row.get("question_plus", "")
-        if pd.isna(question_plus):
+        if question_plus is None or (isinstance(question_plus, float) and pd.isna(question_plus)):
             question_plus = ""
         
         processed_data.append({
@@ -85,51 +86,79 @@ def get_best_checkpoint(checkpoint_path: str, checkpoint_step: str) -> str:
         raise ValueError(f"Checkpoint {target} not found")
 
 
-# Stage 1: 분석용 (question_plus 포함)
-STAGE1_PROMPT = """지문:
+# ============================================
+# 학습 때와 동일한 프롬프트!
+# ============================================
+
+PROMPT_NO_QUESTION_PLUS = """지문:
 {paragraph}
 
 질문:
 {question}
+
+선택지:
+{choices}
+
+1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
+정답:"""
+
+PROMPT_QUESTION_PLUS = """지문:
+{paragraph}
+
+질문:
+{question}
+
+<보기>:
 {question_plus}
 
 선택지:
 {choices}
 
-각 선택지가 맞는지 틀린지 간단히 분석하세요.
-
-분석:"""
-
-# Stage 2: 정답 추출용
-STAGE2_PROMPT = """{analysis}
-
-위 분석을 바탕으로 정답 번호만 말하세요.
+1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
 정답:"""
 
 
-def extract_answer_stage2(text: str) -> str:
-    """Stage 2 출력에서 정답 추출 (숫자만 나옴)"""
-    match = re.search(r'([1-5])', text)
+def extract_answer(text: str) -> str:
+    """생성된 텍스트에서 정답 추출"""
+    text = text.strip()
+    
+    # "정답은 X번" 패턴
+    match = re.search(r'정답은?\s*(\d)\s*번', text)
     if match:
         return match.group(1)
+    
+    # "X번이다" 패턴
+    match = re.search(r'(\d)\s*번이다', text)
+    if match:
+        return match.group(1)
+    
+    # "따라서 X" 패턴
+    match = re.search(r'따라서\s*(\d)', text)
+    if match:
+        return match.group(1)
+    
+    # 마지막에 나오는 1-5 숫자
+    matches = re.findall(r'[1-5]', text)
+    if matches:
+        return matches[-1]
+    
     return "1"
 
 
-def run_inference_cot_twostage(
+def run_inference_cot(
     model, 
     tokenizer, 
     data_list: list,
-    stage1_max_tokens: int = 200,
-    stage2_max_tokens: int = 10,
+    max_new_tokens: int = 400,  # reasoning 길이 고려해서 넉넉하게
     verbose: bool = True,
 ) -> tuple:
-    """Two-Stage CoT 추론"""
+    """Single-Stage CoT 추론 (학습 패턴과 동일)"""
     infer_results = []
     reasoning_results = []
     
     model.eval()
     
-    for idx, data in enumerate(tqdm(data_list, desc="Two-Stage CoT")):
+    for idx, data in enumerate(tqdm(data_list, desc="CoT Inference")):
         _id = data["id"]
         paragraph = data["paragraph"]
         question = data["question"]
@@ -141,68 +170,56 @@ def run_inference_cot_twostage(
         else:
             choices_str = choices
         
-        # ===== Stage 1: 분석 생성 =====
-        stage1_prompt = STAGE1_PROMPT.format(
-            paragraph=paragraph,
-            question=question,
-            question_plus=question_plus,
-            choices=choices_str,
-        )
+        # 학습 때와 동일한 프롬프트!
+        if question_plus:
+            prompt = PROMPT_QUESTION_PLUS.format(
+                paragraph=paragraph,
+                question=question,
+                question_plus=question_plus,
+                choices=choices_str,
+            )
+        else:
+            prompt = PROMPT_NO_QUESTION_PLUS.format(
+                paragraph=paragraph,
+                question=question,
+                choices=choices_str,
+            )
         
-        messages1 = [{"role": "user", "content": stage1_prompt}]
-        inputs1 = tokenizer.apply_chat_template(
-            messages1,
+        messages = [
+            {"role": "system", "content": "지문을 읽고 질문의 답을 구하세요."},
+            {"role": "user", "content": prompt}
+        ]
+        
+        inputs = tokenizer.apply_chat_template(
+            messages,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
         ).to(model.device)
         
         with torch.no_grad():
-            outputs1 = model.generate(
-                inputs1,
-                max_new_tokens=stage1_max_tokens,
+            outputs = model.generate(
+                inputs,
+                max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
             )
         
-        analysis = tokenizer.decode(outputs1[0][inputs1.shape[1]:], skip_special_tokens=True)
-        
-        # ===== Stage 2: 정답만 추출 =====
-        stage2_prompt = STAGE2_PROMPT.format(analysis=analysis)
-        
-        messages2 = [{"role": "user", "content": stage2_prompt}]
-        inputs2 = tokenizer.apply_chat_template(
-            messages2,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_tensors="pt",
-        ).to(model.device)
-        
-        with torch.no_grad():
-            outputs2 = model.generate(
-                inputs2,
-                max_new_tokens=stage2_max_tokens,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-            )
-        
-        answer_text = tokenizer.decode(outputs2[0][inputs2.shape[1]:], skip_special_tokens=True)
-        answer = extract_answer_stage2(answer_text)
+        generated = tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+        answer = extract_answer(generated)
         
         infer_results.append({"id": _id, "answer": answer})
         reasoning_results.append({
             "id": _id, 
             "answer": answer, 
-            "analysis": analysis,
-            "answer_raw": answer_text,
+            "reasoning": generated,
         })
         
         # 처음 3개 샘플 출력
         if verbose and idx < 3:
             print(f"\n{'='*60}")
             print(f"[샘플 {idx+1}]")
-            print(f"Stage1 분석 (마지막 150자): ...{analysis[-150:]}")
-            print(f"Stage2 출력: '{answer_text}'")
+            print(f"생성된 응답:\n{generated[:500]}...")
             print(f"추출된 정답: {answer}")
             print(f"{'='*60}")
     
@@ -222,9 +239,7 @@ def save_predictions_cot(infer_results: list, reasoning_results: list, output_pa
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     print("=" * 60)
-    print("Two-Stage CoT Inference")
-    print("Stage 1: 분석 생성 (200 tokens)")
-    print("Stage 2: 정답 추출 (10 tokens)")
+    print("CoT Inference (학습 프롬프트와 동일)")
     print("=" * 60)
     
     original_cwd = hydra.utils.get_original_cwd()
@@ -248,7 +263,7 @@ def main(cfg: DictConfig):
     torch_dtype = cfg.inference.torch_dtype
     model, tokenizer = load_model_for_inference(checkpoint_path, torch_dtype=torch_dtype)
     
-    # 테스트 데이터 로드 (test.csv)
+    # 테스트 데이터 로드
     test_path = hydra.utils.to_absolute_path(cfg.data.test_path)
     print(f"\nLoading test data from {test_path}...")
     test_df = pd.read_csv(test_path)
@@ -257,14 +272,13 @@ def main(cfg: DictConfig):
     # 데이터 전처리
     test_dataset = process_test_data_for_cot(test_df)
     
-    # Two-Stage 추론
-    print("\nRunning Two-Stage CoT inference...")
-    infer_results, reasoning_results = run_inference_cot_twostage(
+    # 추론
+    print("\nRunning CoT inference...")
+    infer_results, reasoning_results = run_inference_cot(
         model=model,
         tokenizer=tokenizer,
         data_list=test_dataset,
-        stage1_max_tokens=200,
-        stage2_max_tokens=10,
+        max_new_tokens=400,
         verbose=True,
     )
     
@@ -274,7 +288,7 @@ def main(cfg: DictConfig):
     save_predictions_cot(infer_results, reasoning_results, output_path)
     
     print(f"\n{'='*60}")
-    print("Two-Stage CoT Inference completed!")
+    print("CoT Inference completed!")
     print(f"{'='*60}")
 
 

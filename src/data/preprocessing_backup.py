@@ -33,14 +33,8 @@ PROMPT_QUESTION_PLUS = """지문:
 def process_train_dataset(dataset: Dataset) -> list:
     """
     Process training dataset to chat message format
-    
-    [수정] reasoning 컬럼이 있으면 reasoning + 정답 형식으로 학습
     """
     processed_dataset = []
-    
-    # reasoning 컬럼 존재 여부 확인
-    has_reasoning = 'reasoning' in dataset.column_names
-    
     for i in range(len(dataset)):
         choices_string = "\n".join([f"{idx + 1} - {choice}" for idx, choice in enumerate(dataset[i]["choices"])])
 
@@ -60,15 +54,6 @@ def process_train_dataset(dataset: Dataset) -> list:
                 choices=choices_string,
             )
 
-        # [수정] Assistant 응답 결정
-        if has_reasoning and dataset[i].get('reasoning') and str(dataset[i]['reasoning']).strip():
-            # reasoning이 있으면: reasoning 그대로 사용 (이미 "정답은 X번이다" 포함)
-            reasoning = str(dataset[i]['reasoning']).strip()
-            assistant_content = reasoning
-        else:
-            # 기존 방식: 숫자만
-            assistant_content = f"{dataset[i]['answer']}"
-
         # chat message 형식으로 변환
         processed_dataset.append(
             {
@@ -76,7 +61,7 @@ def process_train_dataset(dataset: Dataset) -> list:
                 "messages": [
                     {"role": "system", "content": "지문을 읽고 질문의 답을 구하세요."},
                     {"role": "user", "content": user_message},
-                    {"role": "assistant", "content": assistant_content}
+                    {"role": "assistant", "content": f"{dataset[i]['answer']}"}
                 ],
                 "label": dataset[i]["answer"],
             }
@@ -88,7 +73,6 @@ def process_train_dataset(dataset: Dataset) -> list:
 def process_test_dataset(test_df: pd.DataFrame) -> list:
     """
     Process test dataset to chat message format
-    (테스트는 기존과 동일 - reasoning 없음)
     """
     test_dataset = []
     for i, row in test_df.iterrows():
