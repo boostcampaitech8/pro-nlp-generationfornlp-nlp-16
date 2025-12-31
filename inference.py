@@ -22,15 +22,14 @@ def main(cfg: DictConfig):
 
     # huggingface 모델 바로 사용하는 경우
     use_huggingface = cfg.inference.get("use_huggingface", False)
+    test_data_path = hydra.utils.to_absolute_path(
+        cfg.data.test_path
+    )  # 테스트 데이터 경로
+    output_path = cfg.inference.output_file  # 추론 결과 저장할 파일명
 
     if use_huggingface:
         print(f"Using HuggingFace model directly: {checkpoint_path}")
     else:
-        test_data_path = hydra.utils.to_absolute_path(
-            cfg.data.test_path
-        )  # 테스트 데이터 경로
-        output_path = cfg.inference.output_file  # 추론 결과 저장할 파일명
-
         if not checkpoint_path:
             print(
                 "Checkpoint path is empty. Searching for the latest checkpoint in 'outputs/'..."
