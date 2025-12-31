@@ -1,5 +1,6 @@
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
-from .custom_train import FocalLossTrainer # 직접 만든 커스텀 트레이너
+from .custom_train import FocalLossTrainer  # 직접 만든 커스텀 트레이너
+
 
 def get_data_collator(tokenizer, response_template: str = "<start_of_turn>model"):
     """
@@ -31,7 +32,9 @@ def get_sft_config(
     fp16: bool = False,
     gradient_accumulation_steps: int = 1,
     gradient_checkpointing: bool = False,
-    neftune_noise_alpha: float = None, # NEFTune 잡음 강도, None이면 비활성화 실행할 때 따로 써줘야 적용되게했음
+    neftune_noise_alpha: float = None,  # NEFTune 잡음 강도, None이면 비활성화 실행할 때 따로 써줘야 적용되게했음
+    report_to: str = "none",  # wandb 설정 추가
+    run_name: str = None,  # wandb 설정 추가
 ) -> SFTConfig:
     """
     Get SFT configuration
@@ -52,9 +55,10 @@ def get_sft_config(
         evaluation_strategy=evaluation_strategy,
         save_total_limit=save_total_limit,
         save_only_model=True,
-        report_to="none",
-        load_best_model_at_end=load_best_model_at_end,       
-        metric_for_best_model=metric_for_best_model,       
+        report_to=report_to,  # wandb 설정 추가
+        run_name=run_name,  # wandb 설정 추가
+        load_best_model_at_end=load_best_model_at_end,
+        metric_for_best_model=metric_for_best_model,
         greater_is_better=greater_is_better,
         fp16=fp16,
         gradient_accumulation_steps=gradient_accumulation_steps,

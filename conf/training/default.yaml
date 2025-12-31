@@ -19,3 +19,7 @@ gradient_checkpointing: true
 
 #NEFTune (None이면 Off, 숫자면 On)
 neftune_noise_alpha: null
+
+# wandb 설정
+report_to: "wandb"
+run_name: "null"
