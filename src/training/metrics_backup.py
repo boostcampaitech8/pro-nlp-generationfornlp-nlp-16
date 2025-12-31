@@ -1,50 +1,12 @@
-import re
 import torch
 import numpy as np
+# import evaluate
+# 변경 : 대회 기준에 맞는 평가지표인 f1으로, accuracy도 확인할 수 있게 추가
 from sklearn.metrics import f1_score, accuracy_score
 
 
 # 정답 토큰 매핑
 int_output_map = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
-
-
-def extract_answer_from_text(text: str) -> str:
-    """
-    reasoning 텍스트에서 정답 번호 추출
-    
-    예시:
-    - "분석... 따라서 정답은 1번이다." → "1"
-    - "정답은 3번입니다." → "3"
-    - "3" → "3"
-    """
-    text = text.strip()
-    
-    # 이미 숫자 하나면 그대로 반환
-    if text in ["1", "2", "3", "4", "5"]:
-        return text
-    
-    # "정답은 X번" 패턴 찾기
-    match = re.search(r'정답은\s*(\d)\s*번', text)
-    if match:
-        return match.group(1)
-    
-    # "X번이다" 패턴 찾기
-    match = re.search(r'(\d)\s*번이다', text)
-    if match:
-        return match.group(1)
-    
-    # "X번입니다" 패턴 찾기
-    match = re.search(r'(\d)\s*번입니다', text)
-    if match:
-        return match.group(1)
-    
-    # 마지막에 나오는 1-5 숫자 찾기
-    matches = re.findall(r'[1-5]', text)
-    if matches:
-        return matches[-1]
-    
-    # 기본값
-    return "1"
 
 
 def preprocess_logits_for_metrics(logits, labels, tokenizer):
@@ -60,7 +22,6 @@ def preprocess_logits_for_metrics(logits, labels, tokenizer):
 def compute_metrics(evaluation_result, tokenizer):
     """
     metric 계산 함수
-    [수정] reasoning 텍스트에서 정답 추출 지원
     """
     logits, labels = evaluation_result
 
@@ -68,17 +29,7 @@ def compute_metrics(evaluation_result, tokenizer):
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
     labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
     labels = list(map(lambda x: x.split("<end_of_turn>")[0].strip(), labels))
-    
-    # [수정] reasoning에서 정답 번호 추출
-    labels = list(map(extract_answer_from_text, labels))
-    
-    # 정답 매핑 (유효하지 않은 값 처리)
-    def safe_map(x):
-        if x in int_output_map:
-            return int_output_map[x]
-        return 0  # 기본값
-    
-    labels = list(map(safe_map, labels))
+    labels = list(map(lambda x: int_output_map[x], labels))
 
     # 소프트맥스 함수를 사용하여 로그트 변환
     probs = torch.nn.functional.softmax(torch.tensor(logits), dim=-1)
@@ -88,6 +39,7 @@ def compute_metrics(evaluation_result, tokenizer):
     f1 = f1_score(labels, predictions, average="macro")
     acc = accuracy_score(labels, predictions)
 
+    # acc = acc_metric.compute(predictions=predictions, references=labels)
     return {"f1" : f1, "accuracy": acc}
 
 
