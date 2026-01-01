@@ -18,9 +18,11 @@ def run_inference_generate(
 
     model.eval()
     with torch.inference_mode():
-        for data in tqdm(test_dataset):
+        for idx, data in enumerate(tqdm(test_dataset)):
             _id = data["id"]
             messages = data["messages"]
+
+            print(f"\n[DEBUG {idx}] Starting inference for ID: {_id}")
 
             template_params = {
                 "tokenize": True,
@@ -28,12 +30,13 @@ def run_inference_generate(
                 "return_tensors": "pt",
             }
 
+            print(f"[DEBUG {idx}] Applying chat template...")
             if enable_thinking:
                 try:
                     # thinking 사용
                     inputs = tokenizer.apply_chat_template(
                         messages,
-                        enable_thinking=True,
+                        enable_thinking=False,
                         **template_params,
                     ).to("cuda")
                 except Exception as e:
@@ -52,17 +55,34 @@ def run_inference_generate(
                     **template_params,
                 ).to("cuda")
 
+            print(f"[DEBUG {idx}] Input shape: {inputs.shape}")
+            print(f"[DEBUG {idx}] EOS token ID: {tokenizer.eos_token_id}")
+            print(f"[DEBUG {idx}] Starting text generation...")
+
             # 실제 텍스트 생성
+            import time
+
+            start_time = time.time()
             outputs = model.generate(
                 inputs,
-                max_new_tokens=4096,
+                max_new_tokens=100,  # 50 -> 100으로 조금 증가
                 do_sample=False,
+                eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.eos_token_id,
             )
+            elapsed = time.time() - start_time
+            print(f"[DEBUG {idx}] Generation took {elapsed:.2f}s")
+            print(f"[DEBUG {idx}] Generated {outputs.shape[1] - inputs.shape[1]} new tokens")
+
+            print(f"[DEBUG {idx}] Generation completed. Output shape: {outputs.shape}")
 
             # 생성된 텍스트 디코딩 (입력 부분 제외)
             generated_text = tokenizer.decode(
-                outputs[0][inputs.shape[1]:], skip_special_tokens=True
+                outputs[0][inputs.shape[1] :], skip_special_tokens=True
+            )
+
+            print(
+                f"[DEBUG {idx}] Generated text (first 100 chars): {generated_text[:100]}"
             )
 
             # 생성된 텍스트에서 마지막 숫자(1~5) 추출
@@ -75,9 +95,12 @@ def run_inference_generate(
 
             # 숫자를 찾지 못한 경우 기본값 "1"
             if predict_value is None:
-                print(f"Warning: No valid answer found for ID {_id}. Generated: '{generated_text}'. Using default '1'")
+                print(
+                    f"Warning: No valid answer found for ID {_id}. Generated: '{generated_text}'. Using default '1'"
+                )
                 predict_value = "1"
 
+            print(f"[DEBUG {idx}] Final answer: {predict_value}")
             infer_results.append({"id": _id, "answer": predict_value})
 
     return infer_results
@@ -156,7 +179,11 @@ def run_inference_logit(
 
 
 def run_inference(
-    model, tokenizer, test_dataset: list, enable_thinking: bool = False, inference_mode: str = "logit"
+    model,
+    tokenizer,
+    test_dataset: list,
+    enable_thinking: bool = False,
+    inference_mode: str = "logit",
 ) -> list:
     """
     Run inference with the specified mode
@@ -176,8 +203,9 @@ def run_inference(
     elif inference_mode == "logit":
         return run_inference_logit(model, tokenizer, test_dataset, enable_thinking)
     else:
-        raise ValueError(f"Unknown inference_mode: {inference_mode}. Must be 'generate' or 'logit'")
-
+        raise ValueError(
+            f"Unknown inference_mode: {inference_mode}. Must be 'generate' or 'logit'"
+        )
 
 
 def save_predictions(infer_results: list, output_path: str = "output.csv"):
