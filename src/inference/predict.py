@@ -55,7 +55,7 @@ def run_inference_generate(
             # 실제 텍스트 생성
             outputs = model.generate(
                 inputs,
-                max_new_tokens=20,
+                max_new_tokens=4096,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
             )
@@ -65,9 +65,10 @@ def run_inference_generate(
                 outputs[0][inputs.shape[1]:], skip_special_tokens=True
             )
 
-            # 생성된 텍스트에서 첫 번째 숫자(1~5) 추출
+            # 생성된 텍스트에서 마지막 숫자(1~5) 추출
+            # 역순으로 검색하여 가장 마지막에 나온 숫자를 정답으로 사용
             predict_value = None
-            for char in generated_text.strip():
+            for char in reversed(generated_text.strip()):
                 if char in ["1", "2", "3", "4", "5"]:
                     predict_value = char
                     break
