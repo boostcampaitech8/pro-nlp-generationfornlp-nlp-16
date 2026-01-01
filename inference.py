@@ -154,7 +154,9 @@ def main(cfg: DictConfig):
     # Run inference
     print("Running inference...")
     enable_thinking = cfg.inference.get("enable_thinking", False)
-    infer_results = run_inference(model, tokenizer, test_dataset, enable_thinking)
+    inference_mode = cfg.inference.get("inference_mode", "logit")
+    print(f"Inference mode: {inference_mode}")
+    infer_results = run_inference(model, tokenizer, test_dataset, enable_thinking, inference_mode)
 
     # Save results
     print(f"Saving predictions to {output_path}...")

@@ -1,10 +1,13 @@
 # 실행할 때마다 checkpoint_dir을 명시
 # 예시: checkpoint_dir: "./output/checkpoint-5000"
 # 지정 안해주면 "best" checkpoint 사용 -> 가장 번호가 높은 체크포인트 알아서 로드
-checkpoint_dir: "LGAI-EXAONE/EXAONE-4.0-32B-GPTQ" 
+checkpoint_dir: "LGAI-EXAONE/EXAONE-4.0-32B-GPTQ"
 checkpoint_step: "best"
 output_file: "output.csv"
 torch_dtype: "float16"
 use_huggingface: true
 enable_thinking: true
 use_peft: false
+
+# Inference 방식 선택: "generate" (생성형 모델용) 또는 "logit" (분류형 모델용)
+inference_mode: "generate"
