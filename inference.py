@@ -1,6 +1,7 @@
 """
 Korean SAT Solver - Inference Script
 """
+from unsloth import FastLanguageModel
 from src.data import load_test_data, process_test_dataset
 from src.model import load_model_for_inference
 from src.inference import run_inference, save_predictions
@@ -102,10 +103,14 @@ def main(cfg: DictConfig):
     torch_dtype = cfg.inference.torch_dtype
     quant_config = OmegaConf.to_container(cfg.model.quantization, resolve=True) \
         if hasattr(cfg.model, "quantization") else None
+    use_unsloth = cfg.model.get('use_unsloth', False)
+    
     model, tokenizer = load_model_for_inference(
         checkpoint_path,
         torch_dtype=torch_dtype,
         quantization_config=quant_config,
+        use_unsloth=use_unsloth,
+        max_seq_length=cfg.data.max_length,
     )
 
     # Load and preprocess test data

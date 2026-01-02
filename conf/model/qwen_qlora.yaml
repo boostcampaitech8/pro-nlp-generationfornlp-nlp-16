@@ -1,5 +1,6 @@
 name: "unsloth/Qwen2.5-32B-Instruct-bnb-4bit"
-dtype: "float16" # V100 supports fp16 well (bf16 is Ampere+)
+torch_dtype: "float16" # V100 supports fp16 well (bf16 is Ampere+)
+use_unsloth: true  # Unsloth 사용 여부
 
 response_template: "<|im_start|>assistant\n"
 
@@ -14,7 +15,7 @@ quantization:
 peft:
   r: 8
   lora_alpha: 16
-  lora_dropout: 0.05
+  lora_dropout: 0
   bias: "none"
   task_type: "CAUSAL_LM"
   # Qwen Target Modules

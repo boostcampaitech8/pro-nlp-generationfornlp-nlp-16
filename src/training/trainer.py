@@ -1,6 +1,15 @@
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig
 from .custom_train import FocalLossTrainer # 직접 만든 커스텀 트레이너
 
+# Unsloth imports
+try:
+    from unsloth import is_bfloat16_supported
+    from trl import SFTTrainer as UnslothSFTTrainer  # Unsloth와 호환되는 SFTTrainer
+    UNSLOTH_AVAILABLE = True
+except ImportError:
+    UNSLOTH_AVAILABLE = False
+    UnslothSFTTrainer = SFTTrainer
+
 def get_data_collator(tokenizer, response_template: str = "<start_of_turn>model"):
     """
     Get data collator for completion only LM
@@ -76,22 +85,42 @@ def get_trainer(
     preprocess_logits_for_metrics,
     peft_config,
     sft_config,
+    use_unsloth: bool = False,
 ) -> SFTTrainer:
     """
     Get SFT Trainer
      기존 : trainer = SFTTrainer(...) -> 기본 CrossEntropyLoss 사용
      변경 : trainer = FocalLossTrainer(...) -> FocalLoss 사용
      이름만 바꿔주면 돌아가며 사용 가능
+     
+     Unsloth 사용 시:
+     - peft_config는 None이어야 함 (모델에 이미 LoRA가 적용됨)
+     - UnslothSFTTrainer를 사용하여 최적화된 학습 수행
     """
-    trainer = SFTTrainer(
-        model=model,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        data_collator=data_collator,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-        peft_config=peft_config,
-        args=sft_config,
-    )
+    # Unsloth 사용 시
+    if use_unsloth and UNSLOTH_AVAILABLE:
+        print("🚀 Using Unsloth-optimized SFTTrainer")
+        trainer = UnslothSFTTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            args=sft_config,
+        )
+    else:
+        # 기존 방식
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            peft_config=peft_config,
+            args=sft_config,
+        )
     return trainer

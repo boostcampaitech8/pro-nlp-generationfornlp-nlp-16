@@ -1,6 +1,7 @@
 """
 Korean SAT Solver - Training Script
 """
+from unsloth import FastLanguageModel
 import pandas as pd
 from datasets import Dataset
 import hydra
@@ -17,6 +18,7 @@ from src.data import (
 from src.model import (
     load_model_and_tokenizer,
     get_peft_config,
+    apply_lora_to_model,
     setup_tokenizer_for_training,
     get_response_template,
 )
@@ -63,11 +65,14 @@ def main(cfg: DictConfig):
     torch_dtype = cfg.model.get('torch_dtype', 'float16')
     quant_config = OmegaConf.to_container(cfg.model.quantization, resolve=True) \
         if hasattr(cfg.model, 'quantization') else None
+    use_unsloth = cfg.model.get('use_unsloth', False)
     
     model, tokenizer = load_model_and_tokenizer(
         cfg.model.name, 
         torch_dtype=torch_dtype,
-        quantization_config=quant_config
+        quantization_config=quant_config,
+        use_unsloth=use_unsloth,
+        max_seq_length=cfg.data.max_length,
     )
 
     # Tokenize dataset
@@ -88,14 +93,38 @@ def main(cfg: DictConfig):
     tokenizer = setup_tokenizer_for_training(tokenizer)
 
     # Get configurations
-    peft_config = get_peft_config(
-        r=cfg.model.peft.r,
-        lora_alpha=cfg.model.peft.lora_alpha,
-        lora_dropout=cfg.model.peft.lora_dropout,
-        target_modules=OmegaConf.to_container(cfg.model.peft.target_modules, resolve=True),
-        bias=cfg.model.peft.bias,
-        task_type=cfg.model.peft.task_type
-    )
+    # LoRA를 모델에 적용
+    target_modules = OmegaConf.to_container(cfg.model.peft.target_modules, resolve=True) \
+        if cfg.model.peft.target_modules else None
+    
+    if use_unsloth:
+        print("Applying LoRA to model using Unsloth...")
+        model = apply_lora_to_model(
+            model,
+            r=cfg.model.peft.r,
+            lora_alpha=cfg.model.peft.lora_alpha,
+            lora_dropout=cfg.model.peft.lora_dropout,
+            target_modules=target_modules,
+            use_gradient_checkpointing="unsloth",
+            use_rslora=False,
+            use_unsloth=True,
+        )
+        peft_config = None  # Unsloth는 이미 LoRA가 적용되어 있으므로 None
+    else:
+        # 일반 PEFT 사용 - 모델에 직접 LoRA 적용
+        from peft import get_peft_model
+        print("Applying LoRA to model using PEFT...")
+        peft_config = get_peft_config(
+            r=cfg.model.peft.r,
+            lora_alpha=cfg.model.peft.lora_alpha,
+            lora_dropout=cfg.model.peft.lora_dropout,
+            target_modules=target_modules,
+            bias=cfg.model.peft.bias,
+            task_type=cfg.model.peft.task_type,
+            use_unsloth=False,
+        )
+        model = get_peft_model(model, peft_config)
+        peft_config = None  # 이미 모델에 적용했으므로 None
 
     if hasattr(cfg.model, 'response_template') and cfg.model.response_template:
         response_template = cfg.model.response_template
@@ -142,6 +171,7 @@ def main(cfg: DictConfig):
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         peft_config=peft_config,
         sft_config=sft_config,
+        use_unsloth=use_unsloth,
     )
 
     #적용된 Trainer 확인용

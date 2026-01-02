@@ -1,9 +1,11 @@
 name: "beomi/gemma-ko-2b"
 response_template: "<start_of_turn>model"
+torch_dtype: "float16"  # V100에서는 float16 사용 (bfloat16 미지원)
+use_unsloth: true  # Unsloth 사용 여부
 peft:
   r: 6
   lora_alpha: 8
-  lora_dropout: 0.05
-  target_modules: ['q_proj', 'k_proj']
+  lora_dropout: 0
+  target_modules: ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']
   bias: "none"
   task_type: "CAUSAL_LM"
