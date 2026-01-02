@@ -45,6 +45,7 @@ tmp/
 data/
 data
 models/
+unsloth_compiled_cache/
 
 # src 하위의 data, models는 추적
 !src/data/
