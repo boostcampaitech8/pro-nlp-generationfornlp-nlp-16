@@ -1,8 +1,10 @@
 from .base import BaseAPIClient
 from .openai_client import OpenAIClient
+from .claude_client import ClaudeClient
 
 _CLIENT_REGISTRY = {
     "openai": OpenAIClient,
+    "claude": ClaudeClient,
 }
 
 
