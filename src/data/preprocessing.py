@@ -1,12 +1,12 @@
 import pandas as pd
-from datasets import Dataset
+from datasets import Dataset, ClassLabel
 
 
-PROMPT_NO_QUESTION_PLUS = """지문:
-{paragraph}
-
-질문:
+PROMPT_NO_QUESTION_PLUS = """질문:
 {question}
+
+지문:
+{paragraph}
 
 선택지:
 {choices}
@@ -14,14 +14,14 @@ PROMPT_NO_QUESTION_PLUS = """지문:
 1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
 정답:"""
 
-PROMPT_QUESTION_PLUS = """지문:
-{paragraph}
-
-질문:
+PROMPT_QUESTION_PLUS = """질문:
 {question}
 
 <보기>:
 {question_plus}
+
+지문:
+{paragraph}
 
 선택지:
 {choices}
@@ -139,6 +139,7 @@ def tokenize(element, tokenizer):
     return {
         "input_ids": outputs["input_ids"],
         "attention_mask": outputs["attention_mask"],
+        "label": element["label"],
     }
 
 
@@ -146,10 +147,13 @@ def tokenize_dataset(processed_dataset: Dataset, tokenizer, max_length: int = 10
     """
     Tokenize and split dataset
     """
+    # label 컬럼 제외하고 삭제 (stratify_by_column="label" 사용을 위해 남겨둠)
+    remove_cols = [col for col in processed_dataset.features if col != "label"]
+
     # 데이터 토큰화
     tokenized_dataset = processed_dataset.map(
         lambda x: tokenize(x, tokenizer),
-        remove_columns=list(processed_dataset.features),
+        remove_columns=remove_cols,
         batched=True,
         num_proc=4,
         load_from_cache_file=True,
@@ -159,7 +163,12 @@ def tokenize_dataset(processed_dataset: Dataset, tokenizer, max_length: int = 10
     # 데이터 분리
     # vram memory 제약으로 인해 인풋 데이터의 길이가 max_length 초과인 데이터는 제외하였습니다.
     tokenized_dataset = tokenized_dataset.filter(lambda x: len(x["input_ids"]) <= max_length)
-    tokenized_dataset = tokenized_dataset.train_test_split(test_size=test_size, seed=seed)
+
+    # ClassLabel로 변환
+    # stratify_by_column으로 사용하기 위해 필요
+    tokenized_dataset = tokenized_dataset.cast_column("label", ClassLabel(names=["1", "2", "3", "4", "5"]))
+    
+    tokenized_dataset = tokenized_dataset.train_test_split(test_size=test_size, seed=seed, stratify_by_column="label")
 
     train_dataset = tokenized_dataset['train']
     eval_dataset = tokenized_dataset['test']
