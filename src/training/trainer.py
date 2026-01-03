@@ -71,6 +71,7 @@ def get_sft_config(
         gradient_accumulation_steps=gradient_accumulation_steps,
         gradient_checkpointing=gradient_checkpointing,
         neftune_noise_alpha=neftune_noise_alpha,
+        optim="adamw_8bit",
     )
     return sft_config
 

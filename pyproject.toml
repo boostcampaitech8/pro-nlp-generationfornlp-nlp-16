@@ -26,6 +26,7 @@ dependencies = [
     "torchvision>=0.21.0",
     "setuptools>=80.9.0",
     "unsloth-zoo>=2025.12.7",
+    "xformers>=0.0.29.post3",
 ]
 
 [tool.uv.sources]
