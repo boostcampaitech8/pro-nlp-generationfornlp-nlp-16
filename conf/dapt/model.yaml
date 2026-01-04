@@ -1,7 +1,8 @@
+# DAPT Model Configuration
 name: "skt/A.X-4.0-Light"
-torch_dtype: "float16"
+torch_dtype: "float32"
 response_template: "<|im_start|><|assistant|>"
-use_peft: false
+use_peft: true
 peft:
   r: 8
   lora_alpha: 16
