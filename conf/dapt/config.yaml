@@ -1,0 +1,19 @@
+# DAPT (Domain-Adaptive Pre-Training) Configuration
+defaults:
+  - /model: sktAX
+  - training
+  - _self_
+
+seed: 42
+
+data:
+  dapt_path: "data/aihub_workbook_final.csv"  # Preprocessed DAPT data
+  max_length: 4096
+  test_size: 0.1  # 10% for validation
+
+hydra:
+  job:
+    chdir: true
+    name: dapt
+  run:
+    dir: outputs/dapt/${now:%Y-%m-%d}/${now:%H-%M-%S}
