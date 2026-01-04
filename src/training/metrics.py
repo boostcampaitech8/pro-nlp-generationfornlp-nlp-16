@@ -4,46 +4,34 @@ import numpy as np
 from sklearn.metrics import f1_score, accuracy_score
 
 
-# 정답 토큰 매핑
 int_output_map = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
 
 
 def extract_answer_from_text(text: str) -> str:
     """
     reasoning 텍스트에서 정답 번호 추출
-    
-    예시:
-    - "분석... 따라서 정답은 1번이다." → "1"
-    - "정답은 3번입니다." → "3"
-    - "3" → "3"
     """
     text = text.strip()
     
-    # 이미 숫자 하나면 그대로 반환
     if text in ["1", "2", "3", "4", "5"]:
         return text
     
-    # "정답은 X번" 패턴 찾기
     match = re.search(r'정답은\s*(\d)\s*번', text)
     if match:
         return match.group(1)
     
-    # "X번이다" 패턴 찾기
     match = re.search(r'(\d)\s*번이다', text)
     if match:
         return match.group(1)
     
-    # "X번입니다" 패턴 찾기
     match = re.search(r'(\d)\s*번입니다', text)
     if match:
         return match.group(1)
     
-    # 마지막에 나오는 1-5 숫자 찾기
     matches = re.findall(r'[1-5]', text)
     if matches:
         return matches[-1]
     
-    # 기본값
     return "1"
 
 
@@ -53,42 +41,44 @@ def preprocess_logits_for_metrics(logits, labels, tokenizer):
     """
     logits = logits if not isinstance(logits, tuple) else logits[0]
     logit_idx = [tokenizer.vocab["1"], tokenizer.vocab["2"], tokenizer.vocab["3"], tokenizer.vocab["4"], tokenizer.vocab["5"]]
-    logits = logits[:, -2, logit_idx]  # -2: answer token, -1: eos token
+    logits = logits[:, -2, logit_idx]
     return logits
 
 
 def compute_metrics(evaluation_result, tokenizer):
     """
     metric 계산 함수
-    [수정] reasoning 텍스트에서 정답 추출 지원
+
     """
     logits, labels = evaluation_result
 
-    # 토큰화된 레이블 디코딩
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
     labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-    labels = list(map(lambda x: x.split("<end_of_turn>")[0].strip(), labels))
     
-    # [수정] reasoning에서 정답 번호 추출
+    # 범용 처리
+    def clean_label(x):
+        x = x.strip()
+        if "<end_of_turn>" in x:
+            x = x.split("<end_of_turn>")[0].strip()
+        return x
+    
+    labels = list(map(clean_label, labels))
     labels = list(map(extract_answer_from_text, labels))
     
-    # 정답 매핑 (유효하지 않은 값 처리)
     def safe_map(x):
         if x in int_output_map:
             return int_output_map[x]
-        return 0  # 기본값
+        return 0
     
     labels = list(map(safe_map, labels))
 
-    # 소프트맥스 함수를 사용하여 로그트 변환
     probs = torch.nn.functional.softmax(torch.tensor(logits), dim=-1)
     predictions = np.argmax(probs, axis=-1)
 
-    # 정확도 계산
     f1 = f1_score(labels, predictions, average="macro")
     acc = accuracy_score(labels, predictions)
 
-    return {"f1" : f1, "accuracy": acc}
+    return {"f1": f1, "accuracy": acc}
 
 
 def get_metrics_functions(tokenizer):
@@ -102,3 +92,4 @@ def get_metrics_functions(tokenizer):
         return compute_metrics(evaluation_result, tokenizer)
 
     return _preprocess_logits_for_metrics, _compute_metrics
+

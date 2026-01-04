@@ -9,31 +9,23 @@ CHAT_TEMPLATE = "{% if messages[0]['role'] == 'system' %}{% set system_message =
 def get_response_template(model_name: str, tokenizer) -> str:
     """
     Get response template based on model name
-    
-    간단한 fallback 함수. Config에 없을 때만 사용됨.
     """
     model_name_lower = model_name.lower()
     
     if "qwen" in model_name_lower:
-        return "<|im_start|>assistant"
+        return "<|im_start|>assistant\n"
     elif "gemma" in model_name_lower:
         return "<start_of_turn>model"
     elif "llama" in model_name_lower or "mistral" in model_name_lower:
         return "[/INST]"
     else:
-        # 기본값
         return "<start_of_turn>model"
 
 
 def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype: str = "float16"):
     """
     Load model and tokenizer for training
-
-    Args:
-        model_name: HuggingFace model name
-        torch_dtype: Data type for model weights ('float16', 'bfloat16', 'float32', or 'auto')
     """
-    # Convert string dtype to torch dtype
     dtype_mapping = {
         "float16": torch.float16,
         "bfloat16": torch.bfloat16,
@@ -41,17 +33,30 @@ def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype:
         "auto": "auto"
     }
     dtype = dtype_mapping.get(torch_dtype, torch.float16)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=dtype,
-        trust_remote_code=True,
-    )
+    
+    # 4bit 모델 감지
+    is_bnb_4bit = "bnb-4bit" in model_name.lower()
+    
+    if is_bnb_4bit:
+        print(f"🔧 4-bit 양자화 모델 감지: {model_name}")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=dtype,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=dtype,
+            trust_remote_code=True,
+        )
+    
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         trust_remote_code=True,
     )
 
-    # Set chat template
     if not tokenizer.chat_template:
         print("내장된 Chat Template 없음. 커스텀 Chat Template 설정")
         tokenizer.chat_template = CHAT_TEMPLATE
@@ -67,12 +72,7 @@ def load_model_and_tokenizer(model_name: str = "beomi/gemma-ko-2b", torch_dtype:
 def load_model_for_inference(checkpoint_path: str, torch_dtype: str = "float16"):
     """
     Load model from checkpoint for inference
-    
-    Args:
-        checkpoint_path: Path to checkpoint directory
-        torch_dtype: Data type for model weights ('float16', 'bfloat16', 'float32', or 'auto')
     """
-    # Convert string dtype to torch dtype
     dtype_mapping = {
         "float16": torch.float16,
         "bfloat16": torch.bfloat16,
@@ -80,6 +80,7 @@ def load_model_for_inference(checkpoint_path: str, torch_dtype: str = "float16")
         "auto": "auto"
     }
     dtype = dtype_mapping.get(torch_dtype, torch.float16)
+    
     model = AutoPeftModelForCausalLM.from_pretrained(
         checkpoint_path,
         trust_remote_code=True,
@@ -123,7 +124,6 @@ def setup_tokenizer_for_training(tokenizer):
     """
     Setup tokenizer for training (pad token, padding side)
     """
-    # pad token 설정
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = 'right'
