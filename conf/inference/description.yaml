@@ -1,0 +1,21 @@
+# Description Generation Inference Configuration
+# This config is for generating helpful descriptions (hints) for test samples
+
+# Checkpoint path (leave empty to auto-detect latest DAPT model)
+checkpoint_dir: ""
+checkpoint_step: "best"  # "best" or specific step number
+
+# Output file
+description_output_file: "descriptions.csv"
+
+# Model dtype
+torch_dtype: "float16"  # SKT A.X 모델은 bfloat16 권장
+
+# Generation parameters
+generation:
+  max_new_tokens: 500          # Description length
+  do_sample: true              # Use sampling for diversity
+  temperature: 0.7             # 0.6-0.8 추천 (너무 높으면 산만)
+  top_p: 0.9                   # Nucleus sampling
+  top_k: 50                    # Top-k sampling
+  repetition_penalty: 1.1      # Prevent repetition
