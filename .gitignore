@@ -1,3 +1,9 @@
+# llama.cpp
+llama.cpp/
+llama.cpp/build/
+llama.cpp/*.gguf
+llama.cpp/*.bin
+
 # Python
 __pycache__/
 *.py[cod]
