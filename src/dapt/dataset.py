@@ -1,5 +1,5 @@
 import pandas as pd
-from ast import literal_eval
+import re
 from datasets import Dataset
 from transformers import PreTrainedTokenizer
 from rich.console import Console
@@ -28,27 +28,38 @@ def load_dapt_data(file_path: str) -> pd.DataFrame:
     # 각 샘플(row)을 순회하면 DAPT용 텍스트로 합치기
     records = []
     for _, row in track(df.iterrows(), description="[yellow]Processing samples...[/yellow]", total=len(df)):
-        problems = literal_eval(row['problems'])
+        problems_str = row['problems']
         parts = []
 
-        if pd.notna(row['paragraph']):
-            parts.append(f"[지문]\n{row['paragraph'].strip()}")
 
-        question = problems.get('question', '')
-        if question:
+        # 정규식으로 question 추출
+        question_match = re.search(r'"question":\s*"([^"]*(?:""[^"]*)*)"', problems_str)
+        if question_match:
+            question = question_match.group(1).replace('""', '"')
             parts.append(f"\n[문제]\n{question}")
 
-        choices = problems.get('choices', [])
-        if choices:
+        # 정규식으로 choices 추출
+        choices_match = re.search(r'"choices":\s*\[(.*?)\]', problems_str, re.DOTALL)
+        if choices_match:
+            choices_str = choices_match.group(1)
+            choices = re.findall(r'"([^"]*(?:""[^"]*)*)"', choices_str)
+            choices = [c.replace('""', '"') for c in choices]
             formatted_choices = '\n'.join([f"{i}. {c}" for i, c in enumerate(choices, 1)])
             parts.append(f"\n[선택지]\n{formatted_choices}")
 
-        answer = problems.get('answer')
-        if answer is not None:
-            parts.append(f"\n[정답]\n{answer}")
-
+        # description은 그냥 가져오기
         if pd.notna(row.get('description')):
             parts.append(f"\n[해설]\n{row['description'].strip()}")
+
+        # paragraph는 그냥 가져오기
+        if pd.notna(row['paragraph']):
+            parts.append(f"[지문]\n{row['paragraph'].strip()}")
+
+        # 정규식으로 answer 추출
+        answer_match = re.search(r'"answer":\s*(\d+)', problems_str)
+        if answer_match:
+            answer = answer_match.group(1)
+            parts.append(f"\n[정답]\n{answer}")
 
         records.append({
             'id': row['id'],
@@ -65,9 +76,9 @@ def _tokenize_dapt(examples, tokenizer, max_length):
     DAPT(Domain-Adaptive Pretraining)를 위한
     Causal Language Modeling용 토크나이징 함수.
 
-    입력 텍스트를 토큰화한 뒤,
-    labels를 input_ids와 동일하게 설정하여
-    다음 토큰 예측(next-token prediction) 학습이 가능하도록 함.
+    입력 텍스트를 토큰화한다.
+    DataCollatorForLanguageModeling(mlm=False)가
+    자동으로 labels를 input_ids로부터 생성한다.
     """
     tokenized = tokenizer(
         examples['text'],
@@ -76,7 +87,6 @@ def _tokenize_dapt(examples, tokenizer, max_length):
         padding=False,
         return_attention_mask=True,
     )
-    tokenized['labels'] = tokenized['input_ids'].copy()
     return tokenized
 
 
@@ -108,6 +118,10 @@ def prepare_dapt_dataset(
 
     dataset = Dataset.from_pandas(df)
 
+    # truncation_side를 'right'로 설정하여 뒤쪽(해설)을 보존하고 앞쪽을 자름
+    original_truncation_side = tokenizer.truncation_side
+    tokenizer.truncation_side = 'right'
+    
     console.print(f"[yellow]Tokenizing {len(dataset)} samples...[/yellow]")
     tokenized_dataset = dataset.map(
         lambda examples: _tokenize_dapt(examples, tokenizer, max_length),
@@ -115,6 +129,9 @@ def prepare_dapt_dataset(
         remove_columns=dataset.column_names,
         desc="Tokenizing",
     )
+    
+    # 원래 truncation_side로 복원
+    tokenizer.truncation_side = original_truncation_side
 
     if test_size > 0:
         split_dataset = tokenized_dataset.train_test_split(
