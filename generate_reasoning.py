@@ -1,13 +1,11 @@
 """
-Reasoning 데이터 생성 스크립트
-- GPT-4o mini 사용 (무료 크레딧 $5로 충분)
-- 3,000개 샘플링 기본
-- 중단 후 재개 지원
+Reasoning 데이터 생성 스크립트 v2 (Final)
+- 전략: Deductive (연역적) 3단계
+- 모델: GPT-4o mini
+- 특징: 비율 완화 샘플링 (국어↓ 사회/한국사↑), Negative 문제 처리
 
 사용법:
-1. pip install openai pandas tqdm
-2. OPENAI_API_KEY 설정
-3. python generate_reasoning.py
+    OPENAI_API_KEY='sk-...' uv run python generate_reasoning_v2.py
 """
 
 import os
@@ -19,61 +17,137 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =============================================================================
-# ⚙️ 설정 (여기만 수정하세요)
+# ⚙️ 설정 (여기만 수정)
 # =============================================================================
 
-# OpenAI API 키 (https://platform.openai.com/api-keys)
-OPENAI_API_KEY = " [API_KEY_REMOVED] # 여기에 입력 또는 환경변수 OPENAI_API_KEY 사용
+# OpenAI API 키 (환경변수 또는 직접 입력)
+OPENAI_API_KEY = ""
 
-# 샘플 개수 (None이면 전체, 숫자면 해당 개수만)
-SAMPLE_SIZE = 3000  # 추천: 3000개 ($0.50)
+# 샘플링 설정
+SAMPLE_SIZE = 3000
+RANDOM_SEED = 42
+
+# 비율 완화 설정 (국어 비중 줄이기)
+SAMPLE_RATIO = {
+    'korean': 0.50,   # 50% (원래 74% → 줄임)
+    'society': 0.30,  # 30% (원래 18% → 늘림)
+    'history': 0.20,  # 20% (원래 8% → 늘림)
+}
 
 # 파일 경로
 INPUT_PATH = "data/combined_train.csv"
 OUTPUT_PATH = "data/combined_train_with_reasoning.csv"
 
 # API 설정
-MAX_WORKERS = 5      # 병렬 처리 수
-MAX_TOKENS = 500     # 출력 토큰 제한 (3~6문장, 여유있게)
-RETRY_COUNT = 3      # 재시도 횟수
-RETRY_DELAY = 2      # 재시도 대기(초)
+MAX_WORKERS = 5
+MAX_TOKENS = 400
+RETRY_COUNT = 3
+RETRY_DELAY = 2
+TEMPERATURE = 0.3
 
 # =============================================================================
-# 🎯 프롬프트 (검토 완료 - 수정하지 마세요)
+# 🎯 프롬프트 설계
 # =============================================================================
 
-SYSTEM_PROMPT = """당신은 논리적인 한국 수능 문제 해설 전문가입니다.
-단순한 정답 확인이 아니라, 정답에 도달하는 '논리적 사고 과정'을 명확하게 보여줍니다.
-학생이 이해하기 쉽도록 인과관계를 중심으로 서술하세요."""
+SYSTEM_PROMPT = """당신은 한국 수능/모의고사 문제 분석 전문가입니다.
+연역적 추론(Deductive Reasoning)을 사용하여 문제를 분석합니다.
+
+연역적 추론 방법:
+1. 지문에서 핵심 사실(전제)을 파악
+2. 정답 선택지가 이 전제와 논리적으로 일치하는지 검증
+3. 근거를 바탕으로 결론 도출
+
+반드시 한국어로만, 자연스러운 줄글 형태로 작성하세요."""
 
 USER_PROMPT_TEMPLATE = """[문제]
 지문: {paragraph}
 
 질문: {question}
 {question_plus}
-
 선택지:
 {choices}
 
 정답: {answer}번
 
-[작성 규칙]
-1. 문제의 핵심 요구사항과 지문의 관련 내용을 자연스럽게 연결하여 서술
-2. 정답 선지가 도출되는 구체적인 근거를 지문에서 인용하거나 재진술
-3. 매력적인 오답이 있다면 왜 틀렸는지 논리적 접속사(반면, 하지만 등)를 사용해 반박
-4. 번호를 매기지 말고 줄글 형태로 자연스럽게 이어질 것
-5. 마지막 문장은 반드시 "따라서 정답은 {answer}번이다."로 종료
-6. 핵심 논리를 담아 3~6문장 내외로 간결하게 작성
+[작성 방법]
+1. 지문에서 문제 해결에 필요한 핵심 내용을 파악하여 서술
+2. 정답 선택지가 왜 지문과 일치하는지 구체적 근거 제시
+3. 필요시 주요 오답이 틀린 이유 간단히 언급 (선택)
+4. 마지막 문장: "따라서 정답은 {answer}번이다."
 
-[과목별 예시]
+[규칙]
+- 번호 매기지 말고 줄글로 자연스럽게 연결
+- 3~5문장으로 간결하게
+- 지문에 없는 내용 추론 금지
+- 서론/인사말 없이 바로 시작
 
-(국어) 이 문제는 글쓴이의 관점을 파악해야 한다. 지문 2문단에서 "기술의 발전이 인간 소외를 초래한다"고 명시하고 있으며, 3번 선지의 '기술 만능주의 비판'이 이와 맥락을 같이 한다. 반면 1번은 지문의 논지와 정반대되는 내용이다. 따라서 정답은 3번이다.
+[예시]
+지문 2문단에서 저자는 "기술 발전이 반드시 삶의 질 향상으로 이어지지 않는다"고 주장하고 있다. 3번 선택지의 '기술 만능주의에 대한 비판적 시각'은 이러한 저자의 관점과 정확히 일치한다. 반면 1번은 저자가 오히려 경계하는 입장이다. 따라서 정답은 3번이다."""
 
-(한국사) 자료에 제시된 '토지 조사 사업'은 1910년대 일제 강점기의 대표적인 식민 정책이다. 4번의 '경작권 부정'은 신고주의 원칙에 따른 이 사업의 핵심 결과와 일치한다. 2번의 지계 발급은 대한제국 광무개혁 시기의 사실이므로 시기가 맞지 않는다. 따라서 정답은 4번이다."""
+NEGATIVE_ADDITION = """
+※ 주의: 이 문제는 '틀린 것' 또는 '적절하지 않은 것'을 찾는 문제입니다.
+정답인 {answer}번이 왜 지문 내용과 일치하지 않거나 틀린지를 설명하세요.
+다른 선택지들은 지문과 일치하므로 오답입니다."""
+
+# =============================================================================
+# 📊 과목 분류
+# =============================================================================
+
+HISTORY_KEYWORDS = [
+    '조선', '고려', '신라', '백제', '고구려', '가야', '발해', '통일신라',
+    '삼국', '남북국', '후삼국', '대한제국', '일제', '강점기',
+    '세종', '정조', '영조', '태조', '광해군', '연산군', '세조',
+    '이순신', '안중근', '김구', '유관순', '안창호',
+    '임진왜란', '병자호란', '동학', '3·1운동', '독립운동',
+    '과거제', '신분제', '토지제도', '봉건', '개혁',
+    '의병', '독립협회', '대한민국임시정부',
+    '고분', '유물', '비석', '탑', '불상', '도자기',
+]
+
+SOCIETY_KEYWORDS = [
+    '경제', '시장', '금리', '물가', 'GDP', '무역', '수요', '공급',
+    '인플레이션', '환율', '재정', '통화', '세금', '예산',
+    '정부', '법률', '헌법', '국회', '선거', '민주주의', '정당',
+    '삼권분립', '기본권', '재판', '위헌', '대통령', '국무총리',
+    '복지', '인구', '사회보장', '노동', '고용', '실업',
+    '그래프', '표', '통계', '증가율', '비율', '%', '감소',
+]
+
+NEGATIVE_PATTERNS = [
+    "적절하지 않은", "옳지 않은", "않는 것", "않은 것", "아닌 것",
+    "잘못된", "틀린", "부적절한", "해당하지 않는", "거리가 먼",
+    "일치하지 않는", "부합하지 않는", "맞지 않는",
+]
+
+
+def classify_subject(row: dict) -> str:
+    """키워드 기반 과목 분류"""
+    id_str = str(row.get('id', '')).lower()
+    if 'history' in id_str:
+        return 'history'
+    
+    paragraph = str(row.get('paragraph', '')) if row.get('paragraph') else ''
+    problems = str(row.get('problems', ''))
+    text = paragraph + problems
+    
+    history_score = sum(1 for kw in HISTORY_KEYWORDS if kw in text)
+    society_score = sum(1 for kw in SOCIETY_KEYWORDS if kw in text)
+    
+    if history_score >= 2:
+        return 'history'
+    elif society_score >= 2:
+        return 'society'
+    else:
+        return 'korean'
+
+
+def is_negative_question(question: str) -> bool:
+    """Negative 문제 여부 판별"""
+    return any(pattern in question for pattern in NEGATIVE_PATTERNS)
 
 
 # =============================================================================
-# 코드 (수정 불필요)
+# 🔧 핵심 함수
 # =============================================================================
 
 def init_client():
@@ -89,7 +163,7 @@ def init_client():
     if not api_key:
         print("❌ OPENAI_API_KEY를 설정하세요!")
         print("   방법 1: 스크립트 상단 OPENAI_API_KEY 변수에 직접 입력")
-        print("   방법 2: export OPENAI_API_KEY='sk-...'")
+        print("   방법 2: OPENAI_API_KEY='sk-...' uv run python ...")
         exit(1)
     
     return OpenAI(api_key=api_key)
@@ -101,17 +175,22 @@ def create_prompt(row: dict) -> tuple:
     if isinstance(problems, str):
         problems = ast.literal_eval(problems)
     
-    choices_str = "\n".join([f"{i+1}. {c}" for i, c in enumerate(problems['choices'])])
+    choices = problems['choices']
+    choices_str = "\n".join([f"{i+1}. {c}" for i, c in enumerate(choices)])
     answer = problems['answer']
     question = problems['question']
-    paragraph = row['paragraph']
+    
+    # paragraph null 처리
+    paragraph = row.get('paragraph', '')
+    if pd.isna(paragraph) or paragraph is None:
+        paragraph = "(지문 없음)"
     
     # question_plus 처리
     question_plus = row.get('question_plus', '')
-    if pd.isna(question_plus) or question_plus == '':
+    if pd.isna(question_plus) or question_plus is None or question_plus == '':
         question_plus_str = ""
     else:
-        question_plus_str = f"\n<보기>\n{question_plus}"
+        question_plus_str = f"\n<보기>:\n{question_plus}\n"
     
     user_prompt = USER_PROMPT_TEMPLATE.format(
         paragraph=paragraph,
@@ -120,6 +199,9 @@ def create_prompt(row: dict) -> tuple:
         choices=choices_str,
         answer=answer
     )
+    
+    if is_negative_question(question):
+        user_prompt += NEGATIVE_ADDITION.format(answer=answer)
     
     return user_prompt, answer
 
@@ -133,7 +215,7 @@ def generate_reasoning(client, row: dict) -> str:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 max_tokens=MAX_TOKENS,
-                temperature=0.3,  # 일관성을 위해 낮게
+                temperature=TEMPERATURE,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
@@ -141,184 +223,232 @@ def generate_reasoning(client, row: dict) -> str:
             )
             result = response.choices[0].message.content.strip()
             
-            # 마지막 문장 검증 (없으면 추가)
             if f"정답은 {answer}번" not in result:
                 result += f" 따라서 정답은 {answer}번이다."
             
             return result
             
         except Exception as e:
+            error_msg = str(e)
             if attempt < RETRY_COUNT - 1:
-                time.sleep(RETRY_DELAY * (attempt + 1))
+                wait_time = RETRY_DELAY * (attempt + 1)
+                if "rate" in error_msg.lower():
+                    wait_time = 10
+                time.sleep(wait_time)
             else:
-                print(f"\n⚠️ Error for {row['id']}: {e}")
-                return f"[ERROR] {str(e)}"
+                return f"[ERROR] {error_msg[:100]}"
     
     return "[ERROR] Max retries exceeded"
 
 
-def process_single(args):
-    """단일 샘플 처리 (병렬용)"""
-    idx, row, client = args
+def process_row(args):
+    """병렬 처리용 래퍼"""
+    client, idx, row = args
     reasoning = generate_reasoning(client, row)
-    return idx, row['id'], reasoning
+    return idx, reasoning
 
 
-def sample_data(df: pd.DataFrame, n: int, seed: int = 42) -> pd.DataFrame:
-    """층화 샘플링 (다양한 문제 유형 포함)"""
-    if n >= len(df):
-        return df
+def balanced_sample(df: pd.DataFrame, n: int, ratio: dict, seed: int = 42) -> pd.DataFrame:
+    """
+    비율 완화 샘플링: 국어 비중 줄이고 사회/한국사 비중 높임
     
+    Args:
+        df: 원본 데이터프레임
+        n: 총 샘플 수
+        ratio: 과목별 목표 비율 {'korean': 0.5, 'society': 0.3, 'history': 0.2}
+        seed: 랜덤 시드
+    """
     random.seed(seed)
     
-    # 문제 유형 분류 (negative 문제 우선 포함)
-    def get_question_type(row):
-        problems = ast.literal_eval(row['problems']) if isinstance(row['problems'], str) else row['problems']
-        question = problems['question']
-        if any(kw in question for kw in ['않은', '않는', '틀린', '아닌']):
-            return 'negative'
-        elif '있는 대로' in question or '모두 고른' in question:
-            return 'combination'
-        return 'positive'
-    
+    # 과목 분류
     df = df.copy()
-    df['_type'] = df.apply(get_question_type, axis=1)
+    df['_subject'] = df.apply(lambda x: classify_subject(x.to_dict()), axis=1)
     
-    # 각 유형별로 비율 맞춰서 샘플링
-    sampled = []
-    type_counts = df['_type'].value_counts()
+    sampled_parts = []
+    actual_counts = {}
     
-    for qtype in type_counts.index:
-        type_df = df[df['_type'] == qtype]
-        # 비율 유지하되 최소 개수 보장
-        type_n = max(int(n * len(type_df) / len(df)), min(50, len(type_df)))
-        type_n = min(type_n, len(type_df))
-        sampled.append(type_df.sample(n=type_n, random_state=seed))
+    for subject, target_ratio in ratio.items():
+        subject_df = df[df['_subject'] == subject]
+        target_n = int(n * target_ratio)
+        
+        # 해당 과목 데이터가 목표보다 적으면 전부 사용
+        actual_n = min(target_n, len(subject_df))
+        
+        if actual_n > 0:
+            sampled_parts.append(subject_df.sample(n=actual_n, random_state=seed))
+            actual_counts[subject] = actual_n
     
-    result = pd.concat(sampled).drop(columns=['_type'])
+    result = pd.concat(sampled_parts, ignore_index=True)
     
-    # 목표 개수에 맞추기
+    # 목표 개수에 못 미치면 남은 데이터에서 추가 (주로 korean에서)
     if len(result) < n:
-        remaining = df[~df['id'].isin(result['id'])].drop(columns=['_type'])
-        extra = remaining.sample(n=min(n - len(result), len(remaining)), random_state=seed)
-        result = pd.concat([result, extra])
-    elif len(result) > n:
-        result = result.sample(n=n, random_state=seed)
+        already_ids = set(result['id'].tolist())
+        extra_pool = df[~df['id'].isin(already_ids)]
+        extra_n = min(n - len(result), len(extra_pool))
+        if extra_n > 0:
+            extra = extra_pool.sample(n=extra_n, random_state=seed)
+            result = pd.concat([result, extra], ignore_index=True)
     
-    return result.reset_index(drop=True)
+    return result.drop(columns=['_subject']).reset_index(drop=True), actual_counts
 
+
+def save_checkpoint(df: pd.DataFrame, output_path: str):
+    """중간 저장"""
+    try:
+        df.to_csv(output_path, index=False)
+    except Exception as e:
+        print(f"⚠️ 중간 저장 실패: {e}")
+
+
+# =============================================================================
+# 🚀 메인 함수
+# =============================================================================
 
 def main():
-    print("=" * 60)
-    print("🚀 Reasoning 데이터 생성")
-    print("=" * 60)
-    print(f"모델: GPT-4o mini")
-    print(f"입력: {INPUT_PATH}")
-    print(f"출력: {OUTPUT_PATH}")
-    print(f"샘플 수: {SAMPLE_SIZE if SAMPLE_SIZE else '전체'}")
-    print("=" * 60)
+    print("=" * 65)
+    print("🚀 Reasoning 데이터 생성 (Deductive 전략)")
+    print("=" * 65)
+    print(f"  모델: GPT-4o mini")
+    print(f"  전략: 연역적 추론 3단계")
+    print(f"  입력: {INPUT_PATH}")
+    print(f"  출력: {OUTPUT_PATH}")
+    print(f"  샘플: {SAMPLE_SIZE}개")
+    print(f"  비율: korean {int(SAMPLE_RATIO['korean']*100)}% / society {int(SAMPLE_RATIO['society']*100)}% / history {int(SAMPLE_RATIO['history']*100)}%")
+    print("=" * 65)
     
     # 클라이언트 초기화
     client = init_client()
-    print("✅ OpenAI API 연결 성공")
+    print("✅ OpenAI API 연결 성공\n")
     
     # 데이터 로드
+    if not os.path.exists(INPUT_PATH):
+        print(f"❌ 입력 파일 없음: {INPUT_PATH}")
+        exit(1)
+    
     df = pd.read_csv(INPUT_PATH)
-    print(f"✅ 원본 데이터: {len(df)}개")
+    print(f"📂 원본 데이터: {len(df)}개")
     
-    # 샘플링
-    if SAMPLE_SIZE and SAMPLE_SIZE < len(df):
-        df_target = sample_data(df, SAMPLE_SIZE)
-        print(f"✅ 샘플링: {len(df_target)}개 선택")
-    else:
-        df_target = df
+    # 데이터 품질 체크
+    null_para = df['paragraph'].isna().sum()
+    if null_para > 0:
+        print(f"⚠️ paragraph가 비어있는 데이터: {null_para}개 (처리됨)")
     
-    # 이미 처리된 데이터 확인 (중단 후 재개용)
+    # 과목별 분포 출력
+    df_temp = df.copy()
+    df_temp['_subject'] = df_temp.apply(lambda x: classify_subject(x.to_dict()), axis=1)
+    subject_counts = df_temp['_subject'].value_counts()
+    print(f"\n📊 원본 과목별 분포:")
+    for subject, count in subject_counts.items():
+        pct = count / len(df) * 100
+        print(f"   - {subject}: {count}개 ({pct:.1f}%)")
+    del df_temp
+    
+    # 기존 진행분 확인
     if os.path.exists(OUTPUT_PATH):
         existing_df = pd.read_csv(OUTPUT_PATH)
-        existing_ids = set(existing_df['id'].tolist())
-        df_to_process = df_target[~df_target['id'].isin(existing_ids)]
-        print(f"✅ 기존 진행: {len(existing_ids)}개")
-        print(f"✅ 남은 작업: {len(df_to_process)}개")
-    else:
-        df_to_process = df_target
-        existing_df = None
+        if 'reasoning' in existing_df.columns:
+            valid_mask = existing_df['reasoning'].notna() & ~existing_df['reasoning'].str.startswith('[ERROR]', na=False)
+            done_count = valid_mask.sum()
+            print(f"\n📌 기존 진행분: {done_count}개 완료")
+            
+            if done_count >= SAMPLE_SIZE:
+                print("✅ 이미 목표 달성!")
+                return
+            
+            df = existing_df.copy()
     
-    if len(df_to_process) == 0:
-        print("✅ 모든 데이터 처리 완료!")
+    # reasoning 컬럼 없으면 추가
+    if 'reasoning' not in df.columns:
+        df['reasoning'] = None
+    
+    # 비율 완화 샘플링
+    todo_mask = df['reasoning'].isna() | df['reasoning'].str.startswith('[ERROR]', na=False)
+    todo_df = df[todo_mask].copy()
+    
+    already_done = len(df) - len(todo_df)
+    needed = SAMPLE_SIZE - already_done
+    
+    if needed <= 0:
+        print("✅ 이미 목표 달성!")
+        return
+    
+    print(f"\n🎲 비율 완화 샘플링 중... (필요: {needed}개)")
+    print(f"   목표 비율: korean {int(SAMPLE_RATIO['korean']*100)}% / society {int(SAMPLE_RATIO['society']*100)}% / history {int(SAMPLE_RATIO['history']*100)}%")
+    
+    sampled, actual_counts = balanced_sample(todo_df, needed, SAMPLE_RATIO, RANDOM_SEED)
+    todo_indices = sampled.index.tolist()
+    
+    print(f"\n📊 샘플링 결과:")
+    for subject, count in actual_counts.items():
+        pct = count / len(sampled) * 100
+        print(f"   - {subject}: {count}개 ({pct:.1f}%)")
+    
+    print(f"\n📝 생성 대상: {len(todo_indices)}개")
+    
+    if not todo_indices:
+        print("✅ 모든 샘플 완료!")
         return
     
     # 비용 예상
-    estimated_cost = len(df_to_process) * 0.00017  # 대략적 추정
-    print(f"\n💰 예상 비용: ${estimated_cost:.2f}")
-    print(f"   (무료 크레딧 $5 내에서 가능)")
+    est_cost = len(todo_indices) * 0.0002
+    print(f"💰 예상 비용: ${est_cost:.2f} (무료 크레딧 $5 내)")
     
-    input("\n⏎ Enter를 눌러 시작...")
+    # 태스크 생성
+    tasks = [(client, idx, df.loc[idx].to_dict()) for idx in todo_indices]
     
-    # Reasoning 생성
-    print(f"\n🔄 생성 시작 (병렬: {MAX_WORKERS})")
+    # 병렬 처리
+    print(f"\n🔄 생성 시작...\n")
     
-    results = {}
-    rows_list = df_to_process.to_dict('records')
-    
+    completed = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(process_single, (i, row, client)): i 
-            for i, row in enumerate(rows_list)
-        }
+        futures = {executor.submit(process_row, task): task[1] for task in tasks}
         
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Generating"):
-            idx, row_id, reasoning = future.result()
-            results[idx] = reasoning
-            
-            # 중간 저장 (100개마다)
-            if len(results) % 100 == 0:
-                _save_intermediate(df_to_process, results, existing_df)
+        with tqdm(total=len(futures), desc="Generating", ncols=80) as pbar:
+            for future in as_completed(futures):
+                idx, reasoning = future.result()
+                df.at[idx, 'reasoning'] = reasoning
+                completed += 1
+                pbar.update(1)
+                
+                # 50개마다 중간 저장
+                if completed % 50 == 0:
+                    save_checkpoint(df, OUTPUT_PATH)
     
     # 최종 저장
-    df_to_process = df_to_process.copy()
-    df_to_process['reasoning'] = [results[i] for i in range(len(results))]
+    df.to_csv(OUTPUT_PATH, index=False)
     
-    if existing_df is not None:
-        final_df = pd.concat([existing_df, df_to_process], ignore_index=True)
-    else:
-        final_df = df_to_process
+    # 결과 통계
+    total_with_reasoning = df['reasoning'].notna().sum()
+    error_count = df['reasoning'].str.startswith('[ERROR]', na=False).sum()
+    success_count = total_with_reasoning - error_count
     
-    final_df.to_csv(OUTPUT_PATH, index=False)
-    
-    # 결과 요약
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 65)
     print("✅ 완료!")
-    print("=" * 60)
-    print(f"저장: {OUTPUT_PATH}")
-    print(f"총 샘플: {len(final_df)}개")
+    print("=" * 65)
+    print(f"  성공: {success_count}개")
+    print(f"  에러: {error_count}개")
+    print(f"  저장: {OUTPUT_PATH}")
     
-    error_count = final_df['reasoning'].str.contains(r'\[ERROR\]', regex=True).sum()
     if error_count > 0:
-        print(f"⚠️ 에러: {error_count}개 (재실행하면 자동 재시도)")
+        print(f"\n⚠️ 에러 {error_count}개는 재실행하면 자동 재시도됩니다.")
     
     # 샘플 출력
-    print("\n" + "-" * 60)
+    print("\n" + "-" * 65)
     print("📝 샘플 확인")
-    print("-" * 60)
-    sample = final_df[~final_df['reasoning'].str.contains(r'\[ERROR\]', regex=True, na=False)].iloc[0]
-    problems = ast.literal_eval(sample['problems']) if isinstance(sample['problems'], str) else sample['problems']
-    print(f"질문: {problems['question'][:50]}...")
-    print(f"정답: {problems['answer']}번")
-    print(f"\nReasoning:")
-    print(sample['reasoning'])
-
-
-def _save_intermediate(df_to_process, results, existing_df):
-    """중간 저장"""
-    try:
-        temp_df = df_to_process.iloc[:len(results)].copy()
-        temp_df['reasoning'] = [results[i] for i in range(len(results))]
-        if existing_df is not None:
-            temp_df = pd.concat([existing_df, temp_df], ignore_index=True)
-        temp_df.to_csv(OUTPUT_PATH + ".tmp", index=False)
-    except:
-        pass
+    print("-" * 65)
+    
+    success_df = df[df['reasoning'].notna() & ~df['reasoning'].str.startswith('[ERROR]', na=False)]
+    if len(success_df) > 0:
+        sample = success_df.iloc[-1]
+        problems = sample['problems']
+        if isinstance(problems, str):
+            problems = ast.literal_eval(problems)
+        
+        print(f"질문: {problems['question'][:60]}...")
+        print(f"정답: {problems['answer']}번")
+        print(f"\nReasoning:\n{sample['reasoning']}")
+    
+    print("=" * 65)
 
 
 if __name__ == "__main__":
