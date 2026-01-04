@@ -18,4 +18,5 @@ dependencies = [
     "scikit-learn==1.5.2",
     "transformers==4.46.0",
     "trl==0.11.4",
+    "wandb>=0.23.1",
 ]
