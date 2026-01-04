@@ -40,11 +40,16 @@ def load_model_and_tokenizer(model_name: str, torch_dtype: str = "float16"):
         tokenizer.pad_token = tokenizer.eos_token
         console.print(f"[yellow]⚠[/yellow] Set pad_token to eos_token: [italic]{tokenizer.eos_token}[/italic]")
 
+    # device_map을 지정하지 않으면 CPU에 로드되고, Trainer가 자동으로 GPU로 이동시킴
+    # 수동으로 .cuda()를 호출하면 메모리 관리가 비효율적일 수 있음
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=dtype,
-        device_map="auto",
+        trust_remote_code=True,
     )
+    
+    # 모델을 학습 모드로 설정 (device 이동은 Trainer가 자동으로 처리)
+    model.train()
 
     # 모델 정보를 테이블로 표시
     table = Table(title="Model Information", show_header=False, box=None)
@@ -54,6 +59,8 @@ def load_model_and_tokenizer(model_name: str, torch_dtype: str = "float16"):
     table.add_row("Status", "✓ Loaded successfully")
     table.add_row("Vocab size", f"{len(tokenizer):,}")
     table.add_row("Model dtype", str(model.dtype))
+    table.add_row("Device", "Will be set by Trainer")
+    table.add_row("Training mode", str(model.training))
 
     return model, tokenizer
 
@@ -79,10 +86,39 @@ def apply_peft(model, peft_config_dict):
     )
 
     model = get_peft_model(model, peft_config)
-
+    
+    # PEFT 모델에서 gradient checkpointing 사용 시 입력이 gradient를 계산할 수 있도록 설정
+    # 이는 gradient checkpointing과 함께 사용할 때 필요합니다
+    # base_model에 enable_input_require_grads가 있는 경우 호출
+    if hasattr(model, 'base_model') and hasattr(model.base_model, 'enable_input_require_grads'):
+        model.base_model.enable_input_require_grads()
+    elif hasattr(model, 'enable_input_require_grads'):
+        model.enable_input_require_grads()
+    
+    # 모델을 학습 모드로 명시적으로 설정
+    model.train()
+    
+    # Gradient checkpointing을 모델에 명시적으로 활성화 (메모리 절약)
+    if hasattr(model, 'base_model') and hasattr(model.base_model.model, 'gradient_checkpointing_enable'):
+        model.base_model.model.gradient_checkpointing_enable()
+        console.print("[green]✓[/green] Gradient checkpointing enabled on base model")
+    elif hasattr(model, 'gradient_checkpointing_enable'):
+        model.gradient_checkpointing_enable()
+        console.print("[green]✓[/green] Gradient checkpointing enabled")
+    
+    # 학습 가능한 파라미터 확인
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     all_params = sum(p.numel() for p in model.parameters())
     trainable_pct = 100 * trainable_params / all_params
+    
+    # 학습 가능한 파라미터가 있는지 확인
+    if trainable_params == 0:
+        console.print("[bold red]⚠ WARNING: No trainable parameters found![/bold red]")
+        console.print("[yellow]Checking parameter requires_grad status...[/yellow]")
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                console.print(f"[green]Trainable:[/green] {name}")
+        raise RuntimeError("No trainable parameters found in model. LoRA may not be applied correctly.")
 
     # PEFT 정보를 패널로 표시
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -92,6 +128,7 @@ def apply_peft(model, peft_config_dict):
     table.add_row("Trainable params", f"{trainable_params:,}")
     table.add_row("All params", f"{all_params:,}")
     table.add_row("Trainable %", f"{trainable_pct:.2f}%")
+    console.print(table)
 
     return model
 
@@ -141,8 +178,7 @@ def create_dapt_trainer(
         load_best_model_at_end=training_config.get('load_best_model_at_end', True),
         metric_for_best_model=training_config.get('metric_for_best_model', 'loss'),
         greater_is_better=training_config.get('greater_is_better', False),
-        report_to=["tensorboard"],
-        logging_dir=f"{output_dir}/logs",
+        report_to=["wandb"],
         save_safetensors=True,
     )
 

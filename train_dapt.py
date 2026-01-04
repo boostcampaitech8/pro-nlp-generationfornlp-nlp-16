@@ -15,7 +15,7 @@ console = Console()
 def main(cfg: DictConfig):
     """
     DAPT 학습의 메인 함수.
-    
+
     Args:
         cfg (DictConfig): Hydra로 로드된 설정 파일
     """
@@ -50,8 +50,8 @@ def main(cfg: DictConfig):
     ))
 
     model, tokenizer = load_model_and_tokenizer(
-        cfg.model.name,
-        torch_dtype=cfg.model.get('torch_dtype', 'float16')
+        cfg.name,
+        torch_dtype=cfg.get('torch_dtype', 'float16')
     )
 
     # 3. 데이터셋 준비 (토크나이징 & split)
@@ -81,14 +81,14 @@ def main(cfg: DictConfig):
     console.print(sample_table)
 
     # PEFT(LoRA) 적용 (선택 사항))
-    if cfg.model.get('use_peft', True):
+    if cfg.get('use_peft', True):
         console.print(Panel.fit(
             "[bold yellow] Applying PEFT (LoRA)[/bold yellow]",
             border_style="yellow"
         ))
         model = apply_peft(
             model,
-            OmegaConf.to_container(cfg.model.peft, resolve=True)
+            OmegaConf.to_container(cfg.peft, resolve=True)
         )
     else:
         console.print("[yellow]Skipping PEFT - Full fine-tuning mode[/yellow]")
@@ -99,13 +99,20 @@ def main(cfg: DictConfig):
         border_style="yellow"
     ))
 
+    # training config 추출 (model, data, seed, hydra 제외)
+    training_cfg = {
+        k: v for k, v in cfg.items()
+        if k not in ['name', 'torch_dtype', 'response_template', 'use_peft', 'peft',
+                     'seed', 'data', 'hydra']
+    }
+
     trainer = create_dapt_trainer(
         model=model,
         tokenizer=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         output_dir=output_dir,
-        training_config=OmegaConf.to_container(cfg.training, resolve=True),
+        training_config=training_cfg,
     )
 
     # 5. 학습
@@ -141,7 +148,7 @@ def main(cfg: DictConfig):
     results_table.add_column("Value", style="green")
     
     if trainer.state.best_metric is not None:
-        metric_name = cfg.training.get('metric_for_best_model', 'loss')
+        metric_name = training_cfg.get('metric_for_best_model', 'loss')
         results_table.add_row(f"Best {metric_name}", f"{trainer.state.best_metric:.4f}")
         
         if trainer.state.best_model_checkpoint:
