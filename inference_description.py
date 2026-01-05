@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
     test_df = load_test_data(test_data_path)
     
     # 실사용시 주석처리!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
-    test_df = test_df.head(10)      # 디버그용
+    # test_df = test_df.head(5)      # 디버그용
     print(f"테스트 샘플 수: {len(test_df)}")
 
     # 6. description 생성용 샘플 준비
