@@ -124,8 +124,8 @@ def main():
         files_created.append("descriptions.json")
     if os.path.exists("TestSet_Inference_EXAONE-4.0-32B.csv"):
         files_created.append("TestSet_Inference_EXAONE-4.0-32B.csv")
-    if os.path.exists("submission.csv"):
-        files_created.append("submission.csv")
+    if os.path.exists("outputs/moa/submission.csv"):
+        files_created.append("outputs/moa/submission.csv")
 
     for file in files_created:
         console.print(f"  [green]✓[/green] {file}")

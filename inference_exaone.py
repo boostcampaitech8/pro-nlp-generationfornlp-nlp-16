@@ -19,12 +19,11 @@ from src.inference.exaone_prompts import (
 console = Console()
 
 # Load test data
-df_test = pd.read_csv("output.csv")
-df_output = pd.read_csv("output.csv")
+df_test = pd.read_csv("./data/test.csv")
+
 
 # # TEST MODE: Use only first 10 rows (comment out for full run)
 # df_test = df_test.head(10).reset_index(drop=True)
-# df_output = df_output.head(10).reset_index(drop=True)
 
 # Load descriptions if available
 descriptions_dict = {}
@@ -195,11 +194,16 @@ async def main():
             answer = "1"
 
         # Create submission row with only id and answer
-        submission_data.append({"id": df_output.loc[i, "id"], "answer": answer})
+        submission_data.append({"id": df_test.loc[i, "id"], "answer": answer})
 
     df_submission = pd.DataFrame(submission_data)
-    df_submission.to_csv("submission.csv", index=False)
-    console.print(f"[green]✓[/green] Submission 파일 생성 완료: [italic]submission.csv[/italic]")
+    
+    # Create output directory if it doesn't exist
+    output_dir = "outputs/moa"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    df_submission.to_csv("outputs/moa/submission.csv", index=False)
+    console.print(f"[green]✓[/green] Submission 파일 생성 완료: [italic]outputs/moa/submission.csv[/italic]")
 
     console.print("\n")
     console.print(Panel.fit(
