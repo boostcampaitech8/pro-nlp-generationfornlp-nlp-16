@@ -7,8 +7,46 @@ import pandas as pd
 from tqdm import tqdm
 from omegaconf import DictConfig
 
+# src 폴더에 있는 모듈들 (기존과 동일)
 from src.model import load_model_for_inference
 from src.inference import save_predictions
+
+# =============================================================================
+# 🎯 [핵심 1] 학습 때 사용한 '전문가' 페르소나 (성능 유지를 위해 필수)
+# =============================================================================
+SYSTEM_PROMPT_TRAIN = """당신은 논리적인 한국 수능 문제 해설 전문가입니다.
+단순한 정답 확인이 아니라, 정답에 도달하는 '논리적 사고 과정'을 명확하게 보여줍니다.
+학생이 이해하기 쉽도록 인과관계를 중심으로 서술하세요."""
+
+# =============================================================================
+# 📝 User Prompt 템플릿 (학습 데이터와 100% 동일하게 유지)
+# =============================================================================
+PROMPT_NO_QUESTION_PLUS = """지문:
+{paragraph}
+
+질문:
+{question}
+
+선택지:
+{choices}
+
+1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
+정답:"""
+
+PROMPT_QUESTION_PLUS = """지문:
+{paragraph}
+
+질문:
+{question}
+
+<보기>:
+{question_plus}
+
+선택지:
+{choices}
+
+1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
+정답:"""
 
 
 def process_test_data_for_cot(df: pd.DataFrame) -> list:
@@ -20,7 +58,7 @@ def process_test_data_for_cot(df: pd.DataFrame) -> list:
         if isinstance(problems, str):
             problems = ast.literal_eval(problems)
         
-        # question_plus는 row 레벨에 있음! (problems 안이 아님)
+        # question_plus 처리
         question_plus = row.get("question_plus", "")
         if question_plus is None or (isinstance(question_plus, float) and pd.isna(question_plus)):
             question_plus = ""
@@ -86,41 +124,14 @@ def get_best_checkpoint(checkpoint_path: str, checkpoint_step: str) -> str:
         raise ValueError(f"Checkpoint {target} not found")
 
 
-# ============================================
-# 학습 때와 동일한 프롬프트!
-# ============================================
-
-PROMPT_NO_QUESTION_PLUS = """지문:
-{paragraph}
-
-질문:
-{question}
-
-선택지:
-{choices}
-
-1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
-정답:"""
-
-PROMPT_QUESTION_PLUS = """지문:
-{paragraph}
-
-질문:
-{question}
-
-<보기>:
-{question_plus}
-
-선택지:
-{choices}
-
-1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
-정답:"""
-
-
 def extract_answer(text: str) -> str:
-    """생성된 텍스트에서 정답 추출"""
+    """생성된 텍스트에서 정답 추출 (정규식 보강됨)"""
     text = text.strip()
+    
+    # [보강] "정답: X" 패턴 (가장 강력함)
+    match = re.search(r'정답:\s*(\d)', text)
+    if match:
+        return match.group(1)
     
     # "정답은 X번" 패턴
     match = re.search(r'정답은?\s*(\d)\s*번', text)
@@ -137,7 +148,7 @@ def extract_answer(text: str) -> str:
     if match:
         return match.group(1)
     
-    # 마지막에 나오는 1-5 숫자
+    # 최후의 수단: 마지막에 나오는 1-5 숫자
     matches = re.findall(r'[1-5]', text)
     if matches:
         return matches[-1]
@@ -149,14 +160,14 @@ def run_inference_cot(
     model, 
     tokenizer, 
     data_list: list,
-    max_new_tokens: int = 400,  # reasoning 길이 고려해서 넉넉하게
+    max_new_tokens: int = 512,  # Reasoning이 길어질 수 있으므로 조금 더 넉넉하게
     verbose: bool = True,
 ) -> tuple:
-    """Single-Stage CoT 추론 (학습 패턴과 동일)"""
+    """Single-Stage CoT 추론"""
     infer_results = []
     reasoning_results = []
     
-    # Negative 문제 패턴
+    # Negative 문제 패턴 감지용
     negative_patterns = ["않는 것", "않은 것", "아닌 것", "적절하지 않은", "옳지 않은", "일치하지 않는", "잘못된 것", "틀린 것", "부적절한"]
     
     model.eval()
@@ -173,7 +184,7 @@ def run_inference_cot(
         else:
             choices_str = choices
         
-        # 학습 때와 동일한 프롬프트!
+        # 프롬프트 조립
         if question_plus:
             prompt = PROMPT_QUESTION_PLUS.format(
                 paragraph=paragraph,
@@ -188,13 +199,15 @@ def run_inference_cot(
                 choices=choices_str,
             )
         
-        # Negative 문제 감지
+        # 🎯 [핵심 2] System Prompt 동적 할당
         is_negative = any(p in question for p in negative_patterns)
         
         if is_negative:
-            system_content = "지문을 읽고 질문의 답을 구하세요. 주의: 이 문제는 '틀린 것' 또는 '적절하지 않은 것'을 찾는 문제입니다. 지문과 일치하지 않는 선택지를 고르세요."
+            # 전문가 페르소나 + 부정형 주의사항
+            system_content = SYSTEM_PROMPT_TRAIN + "\n\n※ 주의: 이 문제는 '틀린 것' 또는 '적절하지 않은 것'을 찾는 문제입니다. 정답 선지가 왜 지문과 일치하지 않는지 설명하세요."
         else:
-            system_content = "지문을 읽고 질문의 답을 구하세요."
+            # 전문가 페르소나 (학습 때와 동일)
+            system_content = SYSTEM_PROMPT_TRAIN
         
         messages = [
             {"role": "system", "content": system_content},
@@ -212,7 +225,7 @@ def run_inference_cot(
             outputs = model.generate(
                 inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
+                do_sample=False, # 결정론적 결과 (Greedy Decoding)
                 pad_token_id=tokenizer.pad_token_id,
             )
         
@@ -226,31 +239,34 @@ def run_inference_cot(
             "reasoning": generated,
         })
         
-        # 처음 3개 샘플 출력
+        # 처음 3개 샘플 출력 (확인용)
         if verbose and idx < 3:
             print(f"\n{'='*60}")
-            print(f"[샘플 {idx+1}]")
-            print(f"생성된 응답:\n{generated[:500]}...")
-            print(f"추출된 정답: {answer}")
+            print(f"[샘플 {idx+1}] ID: {_id}")
+            print(f"질문 유형: {'부정형(Negative)' if is_negative else '일반'}")
+            print(f"생성된 응답:\n{generated[:300]}...") # 너무 길면 잘라서 보여줌
+            print(f"\n---> 추출된 정답: {answer}")
             print(f"{'='*60}")
     
     return infer_results, reasoning_results
 
 
 def save_predictions_cot(infer_results: list, reasoning_results: list, output_path: str):
-    """CoT 결과 저장"""
+    """결과 저장"""
+    # 제출용 파일 (ID, Answer)
     pd.DataFrame(infer_results).to_csv(output_path, index=False)
-    print(f"제출용 저장: {output_path}")
+    print(f"✅ 제출용 파일 저장 완료: {output_path}")
     
+    # 분석용 파일 (ID, Answer, Reasoning)
     reasoning_path = output_path.replace(".csv", "_reasoning.csv")
     pd.DataFrame(reasoning_results).to_csv(reasoning_path, index=False)
-    print(f"풀이 포함 저장: {reasoning_path}")
+    print(f"✅ 분석용 파일 저장 완료: {reasoning_path}")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     print("=" * 60)
-    print("CoT Inference (학습 프롬프트와 동일)")
+    print("🚀 CoT Inference Started (Expert Mode)")
     print("=" * 60)
     
     original_cwd = hydra.utils.get_original_cwd()
@@ -274,6 +290,12 @@ def main(cfg: DictConfig):
     torch_dtype = cfg.inference.torch_dtype
     model, tokenizer = load_model_for_inference(checkpoint_path, torch_dtype=torch_dtype)
     
+    # 🚨 [핵심 3] Qwen 모델 안전장치 (Pad Token 설정)
+    if tokenizer.pad_token is None:
+        print("⚠️ Pad token is None. Setting to EOS token.")
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    
     # 테스트 데이터 로드
     test_path = hydra.utils.to_absolute_path(cfg.data.test_path)
     print(f"\nLoading test data from {test_path}...")
@@ -283,13 +305,13 @@ def main(cfg: DictConfig):
     # 데이터 전처리
     test_dataset = process_test_data_for_cot(test_df)
     
-    # 추론
+    # 추론 실행
     print("\nRunning CoT inference...")
     infer_results, reasoning_results = run_inference_cot(
         model=model,
         tokenizer=tokenizer,
         data_list=test_dataset,
-        max_new_tokens=400,
+        max_new_tokens=512, # 충분히 길게
         verbose=True,
     )
     
@@ -299,7 +321,7 @@ def main(cfg: DictConfig):
     save_predictions_cot(infer_results, reasoning_results, output_path)
     
     print(f"\n{'='*60}")
-    print("CoT Inference completed!")
+    print("All Tasks Completed Successfully!")
     print(f"{'='*60}")
 
 

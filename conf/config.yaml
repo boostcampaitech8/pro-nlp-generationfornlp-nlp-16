@@ -1,5 +1,5 @@
 defaults:
-  - model:  qwen32b
+  - model: qwen32b
   - training: default
   - inference: default
   - _self_
