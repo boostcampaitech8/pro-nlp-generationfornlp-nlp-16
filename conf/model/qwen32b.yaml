@@ -1,7 +1,7 @@
 name: "unsloth/Qwen2.5-32B-Instruct-bnb-4bit"
 torch_dtype: "float16"
 
-response_template: "<|im_start|><|assistant|>\n"
+response_template: "<|im_start|>assistant\n"
 
 # PEFT Config
 peft:
