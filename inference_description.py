@@ -4,6 +4,9 @@ import hydra
 import pandas as pd
 import torch
 from omegaconf import DictConfig
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from src.model.model import load_model_for_inference
 from src.data.dataset import load_test_data
@@ -11,6 +14,8 @@ from src.inference.generate_description import (
     generate_descriptions_batch,
     prepare_test_sample,
 )
+
+console = Console()
 
 
 def save_descriptions(results: list, csv_path: str = "descriptions.csv", json_path: str = "descriptions.json"):
@@ -28,12 +33,12 @@ def save_descriptions(results: list, csv_path: str = "descriptions.csv", json_pa
     # CSV 저장
     df = pd.DataFrame(results)
     df.to_csv(csv_path, index=False)
-    print(f"총 {len(results)}개의 description을 {csv_path}에 저장했습니다.")
+    console.print(f"[green]✓[/green] 총 {len(results)}개의 description을 [italic]{csv_path}[/italic]에 저장했습니다.")
 
     # JSON 저장
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"총 {len(results)}개의 description을 {json_path}에 저장했습니다.")
+    console.print(f"[green]✓[/green] 총 {len(results)}개의 description을 [italic]{json_path}[/italic]에 저장했습니다.")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -42,9 +47,11 @@ def main(cfg: DictConfig):
     description 생성 inference 전체 파이프라인을 실행하는 메인 함수
     """
 
-    print("=" * 60)
-    print("Description Generation Inference")
-    print("=" * 60)
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold cyan]Description Generation Inference[/bold cyan]",
+        border_style="cyan"
+    ))
 
     # 1. 설정 및 경로 준비
     checkpoint_path = cfg.inference.checkpoint_dir
@@ -57,7 +64,7 @@ def main(cfg: DictConfig):
 
     # 2. 체크포인트 자동 탐색
     if not checkpoint_path:
-        print("Checkpoint 경로가 지정되지 않아 자동 탐색을 수행합니다.")
+        console.print("[yellow]Checkpoint 경로가 지정되지 않아 자동 탐색을 수행합니다.[/yellow]")
 
         outputs_roots = [
             os.path.join(original_cwd, "outputs", "dapt"),
@@ -116,27 +123,43 @@ def main(cfg: DictConfig):
             if os.path.exists(candidate):
                 checkpoint_path = candidate
 
-    print(f"Checkpoint Path: {checkpoint_path}")
-    print(f"Test Data Path: {test_data_path}")
-    print(f"CSV Output Path: {csv_output_path}")
-    print(f"JSON Output Path: {json_output_path}")
+    # 경로 정보 테이블
+    path_table = Table(title="Configuration Paths", show_header=False, box=None)
+    path_table.add_column("Key", style="bold cyan")
+    path_table.add_column("Value", style="white")
+
+    path_table.add_row("Checkpoint Path", checkpoint_path)
+    path_table.add_row("Test Data Path", test_data_path)
+    path_table.add_row("CSV Output Path", csv_output_path)
+    path_table.add_row("JSON Output Path", json_output_path)
+
+    console.print("\n")
+    console.print(path_table)
 
     # 4. 모델 로드
-    print("\n모델을 로드합니다...")
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold yellow]Loading Model & Tokenizer[/bold yellow]",
+        border_style="yellow"
+    ))
     torch_dtype = cfg.inference.get("torch_dtype", "bfloat16")
     model, tokenizer = load_model_for_inference(
         checkpoint_path,
         torch_dtype=torch_dtype,
     )
-    print(f"모델 로드 완료 (dtype={torch_dtype})")
+    console.print(f"[green]✓[/green] 모델 로드 완료 (dtype={torch_dtype})")
 
     # 5. 테스트 데이터 로드
-    print("\n테스트 데이터를 로드합니다...")
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold yellow]Loading Test Data[/bold yellow]",
+        border_style="yellow"
+    ))
     test_df = load_test_data(test_data_path)
-    
+
     # 실사용시 주석처리!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
     # test_df = test_df.head(5)      # 디버그용
-    print(f"테스트 샘플 수: {len(test_df)}")
+    console.print(f"[green]✓[/green] 테스트 샘플 수: {len(test_df)}")
 
     # 6. description 생성용 샘플 준비
     test_samples = []
@@ -151,7 +174,7 @@ def main(cfg: DictConfig):
 
         test_samples.append(sample)
 
-    print(f"총 {len(test_samples)}개의 샘플을 준비했습니다.")
+    console.print(f"[green]✓[/green] 총 {len(test_samples)}개의 샘플을 준비했습니다.")
 
     # 7. generation 설정
     gen_cfg = cfg.inference.get("generation", {})
@@ -162,16 +185,26 @@ def main(cfg: DictConfig):
     repetition_penalty = gen_cfg.get("repetition_penalty", 1.1)
     do_sample = gen_cfg.get("do_sample", True)
 
-    print("\nGeneration 설정:")
-    print(f"  max_new_tokens: {max_new_tokens}")
-    print(f"  temperatures: {temperatures}")
-    print(f"  top_p: {top_p}")
-    print(f"  top_k: {top_k}")
-    print(f"  repetition_penalty: {repetition_penalty}")
-    print(f"  do_sample: {do_sample}")
+    console.print("\n[bold]Generation 설정[/bold]")
+    gen_table = Table(show_header=False, box=None)
+    gen_table.add_column("Parameter", style="cyan")
+    gen_table.add_column("Value", style="white")
+
+    gen_table.add_row("max_new_tokens", str(max_new_tokens))
+    gen_table.add_row("temperatures", str(temperatures))
+    gen_table.add_row("top_p", str(top_p))
+    gen_table.add_row("top_k", str(top_k))
+    gen_table.add_row("repetition_penalty", str(repetition_penalty))
+    gen_table.add_row("do_sample", str(do_sample))
+
+    console.print(gen_table)
 
     # 8. description 생성
-    print("\ndescription 생성을 시작합니다...")
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold green]Starting Description Generation[/bold green]",
+        border_style="green"
+    ))
     results = generate_descriptions_batch(
         model=model,
         tokenizer=tokenizer,
@@ -186,20 +219,28 @@ def main(cfg: DictConfig):
     )
 
     # 9. 결과 저장
-    print("\n결과를 저장합니다...")
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold blue]Saving Results[/bold blue]",
+        border_style="blue"
+    ))
     save_descriptions(results, csv_path=csv_output_path, json_path=json_output_path)
 
     # 10. 샘플 출력
-    print("\n샘플 결과 (상위 3개):")
+    console.print("\n[bold]샘플 결과 (상위 3개)[/bold]")
     for i in range(min(3, len(results))):
-        print(f"\n--- Sample {i + 1} ---")
-        print(f"ID: {results[i]['id']}")
+        console.print(f"\n[cyan]--- Sample {i + 1} ---[/cyan]")
+        console.print(f"[bold]ID:[/bold] {results[i]['id']}")
         for key in sorted(results[i].keys()):
             if key.startswith("description_"):
-                print(f"\n{key}:")
-                print(results[i][key])
+                console.print(f"\n[yellow]{key}:[/yellow]")
+                console.print(results[i][key])
 
-    print("\nDescription generation이 완료되었습니다.")
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold green]Description Generation Complete![/bold green]",
+        border_style="green"
+    ))
 
 
 if __name__ == "__main__":
