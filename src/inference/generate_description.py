@@ -8,8 +8,8 @@ def generate_description_single(
     tokenizer,
     paragraph: str,
     question: str,
-    question_plus: Optional[str] = None,
     choices: List[str],
+    question_plus: Optional[str] = None,
     max_new_tokens: int = 500,
     temperature: float = 0.7,
     top_p: float = 0.9,
@@ -221,8 +221,8 @@ def prepare_test_sample(
     sample_id: str,
     paragraph: str,
     question: str,
-    question_plus: Optional[str],
     choices: List[str],
+    question_plus: Optional[str],
 ) -> Dict:
     """
     단일 테스트 샘플을 description 생성용 표준 포맷으로 변환한다.
