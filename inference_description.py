@@ -1,4 +1,5 @@
 import os
+import json
 import hydra
 import pandas as pd
 import torch
@@ -12,19 +13,27 @@ from src.inference.generate_description import (
 )
 
 
-def save_descriptions(results: list, output_path: str = "descriptions.csv"):
+def save_descriptions(results: list, csv_path: str = "descriptions.csv", json_path: str = "descriptions.json"):
     """
-    생성된 description 결과를 CSV 파일로 저장한다.
+    생성된 description 결과를 CSV와 JSON 파일로 저장한다.
 
     Args:
         results:
-            [{"id": ..., "description": ...}, ...] 형태의 리스트
-        output_path:
+            [{"id": ..., "description_1": ..., "description_2": ...}, ...] 형태의 리스트
+        csv_path:
             CSV 파일 저장 경로
+        json_path:
+            JSON 파일 저장 경로
     """
+    # CSV 저장
     df = pd.DataFrame(results)
-    df.to_csv(output_path, index=False)
-    print(f"총 {len(results)}개의 description을 {output_path}에 저장했습니다.")
+    df.to_csv(csv_path, index=False)
+    print(f"총 {len(results)}개의 description을 {csv_path}에 저장했습니다.")
+
+    # JSON 저장
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(f"총 {len(results)}개의 description을 {json_path}에 저장했습니다.")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -41,7 +50,8 @@ def main(cfg: DictConfig):
     checkpoint_path = cfg.inference.checkpoint_dir
     checkpoint_step = cfg.inference.checkpoint_step
     test_data_path = hydra.utils.to_absolute_path(cfg.data.test_path)
-    output_path = cfg.inference.get("description_output_file", "descriptions.csv")
+    csv_output_path = cfg.inference.get("description_output_csv", "descriptions.csv")
+    json_output_path = cfg.inference.get("description_output_json", "descriptions.json")
 
     original_cwd = hydra.utils.get_original_cwd()
 
@@ -108,7 +118,8 @@ def main(cfg: DictConfig):
 
     print(f"Checkpoint Path: {checkpoint_path}")
     print(f"Test Data Path: {test_data_path}")
-    print(f"Output Path: {output_path}")
+    print(f"CSV Output Path: {csv_output_path}")
+    print(f"JSON Output Path: {json_output_path}")
 
     # 4. 모델 로드
     print("\n모델을 로드합니다...")
@@ -176,7 +187,7 @@ def main(cfg: DictConfig):
 
     # 9. 결과 저장
     print("\n결과를 저장합니다...")
-    save_descriptions(results, output_path)
+    save_descriptions(results, csv_path=csv_output_path, json_path=json_output_path)
 
     # 10. 샘플 출력
     print("\n샘플 결과 (상위 3개):")

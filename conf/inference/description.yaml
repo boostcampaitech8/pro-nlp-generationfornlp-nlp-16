@@ -5,8 +5,9 @@
 checkpoint_dir: ""
 checkpoint_step: "best"  # "best" or specific step number
 
-# Output file
-description_output_file: "descriptions.csv"
+# Output files
+description_output_csv: "descriptions.csv"
+description_output_json: "descriptions.json"
 
 # Model dtype
 torch_dtype: "float16"  # SKT A.X 모델은 bfloat16 권장
