@@ -118,7 +118,7 @@ def generate_descriptions_batch(
     tokenizer,
     test_dataset: List[Dict],
     max_new_tokens: int = 500,
-    temperature: float = 0.7,
+    temperatures: List[float] = [0.7],
     top_p: float = 0.9,
     top_k: int = 50,
     repetition_penalty: float = 1.1,
@@ -146,8 +146,8 @@ def generate_descriptions_batch(
             사용할 프롬프트 템플릿
         max_new_tokens:
             생성할 최대 토큰 수
-        temperature:
-            샘플링 온도
+        temperatures:
+            샘플링 온도 리스트 (각 temperature마다 description 생성)
         top_p:
             nucleus sampling 파라미터
         top_k:
@@ -162,9 +162,10 @@ def generate_descriptions_batch(
     Returns:
         다음 형태의 딕셔너리 리스트:
         [
-            {"id": sample_id, "description": 생성된 설명},
+            {"id": sample_id, "description_1": 설명1, "description_2": 설명2, ...},
             ...
         ]
+        (temperatures 개수만큼 description_N 컬럼 생성)
     """
 
     # 추론 모드로 전환 (dropout 등 비활성화)
@@ -187,26 +188,31 @@ def generate_descriptions_batch(
         question_plus = sample["question_plus"]
         choices = sample["choices"]
 
-        description = generate_description_single(
-            model=model,
-            tokenizer=tokenizer,
-            paragraph=paragraph,
-            question=question,
-            question
-            choices=choices,
-            prompt_template=prompt_template,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            repetition_penalty=repetition_penalty,
-            do_sample=do_sample,
-        )
+        # 여러 temperature로 description 생성
+        descriptions = []
+        for temp in temperatures:
+            description = generate_description_single(
+                model=model,
+                tokenizer=tokenizer,
+                paragraph=paragraph,
+                question=question,
+                question_plus=question_plus,
+                choices=choices,
+                max_new_tokens=max_new_tokens,
+                temperature=temp,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                do_sample=do_sample,
+            )
+            descriptions.append(description)
 
-        results.append({
-            "id": sample_id,
-            "description": description,
-        })
+        # 결과 저장 (description_1, description_2, ... 컬럼으로)
+        result = {"id": sample_id}
+        for i, desc in enumerate(descriptions, 1):
+            result[f"description_{i}"] = desc
+
+        results.append(result)
 
     return results
 

@@ -145,7 +145,7 @@ def main(cfg: DictConfig):
     # 7. generation 설정
     gen_cfg = cfg.inference.get("generation", {})
     max_new_tokens = gen_cfg.get("max_new_tokens", 384)
-    temperature = gen_cfg.get("temperature", 0.7)
+    temperatures = gen_cfg.get("temperatures", [0.7])
     top_p = gen_cfg.get("top_p", 0.9)
     top_k = gen_cfg.get("top_k", 50)
     repetition_penalty = gen_cfg.get("repetition_penalty", 1.1)
@@ -153,7 +153,7 @@ def main(cfg: DictConfig):
 
     print("\nGeneration 설정:")
     print(f"  max_new_tokens: {max_new_tokens}")
-    print(f"  temperature: {temperature}")
+    print(f"  temperatures: {temperatures}")
     print(f"  top_p: {top_p}")
     print(f"  top_k: {top_k}")
     print(f"  repetition_penalty: {repetition_penalty}")
@@ -166,7 +166,7 @@ def main(cfg: DictConfig):
         tokenizer=tokenizer,
         test_dataset=test_samples,
         max_new_tokens=max_new_tokens,
-        temperature=temperature,
+        temperatures=temperatures,
         top_p=top_p,
         top_k=top_k,
         repetition_penalty=repetition_penalty,
@@ -183,7 +183,10 @@ def main(cfg: DictConfig):
     for i in range(min(3, len(results))):
         print(f"\n--- Sample {i + 1} ---")
         print(f"ID: {results[i]['id']}")
-        print(results[i]["description"])
+        for key in sorted(results[i].keys()):
+            if key.startswith("description_"):
+                print(f"\n{key}:")
+                print(results[i][key])
 
     print("\nDescription generation이 완료되었습니다.")
 
