@@ -14,9 +14,9 @@ torch_dtype: "float16"  # SKT A.X 모델은 bfloat16 권장
 
 # Generation parameters
 generation:
-  max_new_tokens: 400          # Description length
+  max_new_tokens: 250          # Description length (reduced from 400 to prevent verbosity)
   do_sample: true              # Use sampling for diversity
-  temperatures: [0.5, 0.9]     # Multiple temperatures for diverse descriptions
-  top_p: 0.9                   # Nucleus sampling
-  top_k: 50                    # Top-k sampling
-  repetition_penalty: 1.1      # Prevent repetition
+  temperatures: [0.3, 0.7]     # Lower temperatures for more focused output (was [0.5, 0.9])
+  top_p: 0.85                  # Nucleus sampling (reduced from 0.9)
+  top_k: 40                    # Top-k sampling (reduced from 50 for more restrictive selection)
+  repetition_penalty: 1.3      # Stronger penalty against repetition (increased from 1.1)
