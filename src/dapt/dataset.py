@@ -12,7 +12,7 @@ def load_dapt_data(file_path: str) -> pd.DataFrame:
     AIHub 국어 지문형 문제 데이터를 DAPT(Domain-Adaptive Pretraining) 학습용으로
     로드하고 전처리하는 함수.
 
-    DAPT 특성상 문제의 모든 구성 요소 지문, 문제, 선택지, 정답, 해설)를 항상 포함한다.
+    DAPT 특성상 문제의 일부 구성 요소만 (지문, 선택지, 해설) 포함한다.
 
     Args:
         file_path (str): aihub_workbook_final.csv 파일 경로
@@ -31,12 +31,9 @@ def load_dapt_data(file_path: str) -> pd.DataFrame:
         problems_str = row['problems']
         parts = []
 
-
-        # 정규식으로 question 추출
-        question_match = re.search(r'"question":\s*"([^"]*(?:""[^"]*)*)"', problems_str)
-        if question_match:
-            question = question_match.group(1).replace('""', '"')
-            parts.append(f"\n[문제]\n{question}")
+        # paragraph는 그냥 가져오기
+        if pd.notna(row['paragraph']):
+            parts.append(f"\n{row['paragraph'].strip()}")
 
         # 정규식으로 choices 추출
         choices_match = re.search(r'"choices":\s*\[(.*?)\]', problems_str, re.DOTALL)
@@ -45,21 +42,11 @@ def load_dapt_data(file_path: str) -> pd.DataFrame:
             choices = re.findall(r'"([^"]*(?:""[^"]*)*)"', choices_str)
             choices = [c.replace('""', '"') for c in choices]
             formatted_choices = '\n'.join([f"{i}. {c}" for i, c in enumerate(choices, 1)])
-            parts.append(f"\n[선택지]\n{formatted_choices}")
+            parts.append(f"\n{formatted_choices}")
 
         # description은 그냥 가져오기
         if pd.notna(row.get('description')):
-            parts.append(f"\n[해설]\n{row['description'].strip()}")
-
-        # paragraph는 그냥 가져오기
-        if pd.notna(row['paragraph']):
-            parts.append(f"[지문]\n{row['paragraph'].strip()}")
-
-        # 정규식으로 answer 추출
-        answer_match = re.search(r'"answer":\s*(\d+)', problems_str)
-        if answer_match:
-            answer = answer_match.group(1)
-            parts.append(f"\n[정답]\n{answer}")
+            parts.append(f"\n{row['description'].strip()}")
 
         records.append({
             'id': row['id'],
