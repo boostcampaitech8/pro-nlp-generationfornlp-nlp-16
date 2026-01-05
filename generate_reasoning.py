@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================================================
 
 # OpenAI API 키 (https://platform.openai.com/api-keys)
-OPENAI_API_KEY = "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"  # 여기에 입력 또는 환경변수 OPENAI_API_KEY 사용
+OPENAI_API_KEY = ""  # 여기에 입력 또는 환경변수 OPENAI_API_KEY 사용
 
 # 샘플 개수 (None이면 전체, 숫자면 해당 개수만)
 SAMPLE_SIZE = 3000  # 추천: 3000개 ($0.50)
