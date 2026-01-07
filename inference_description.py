@@ -14,31 +14,9 @@ from src.inference.generate_description import (
     generate_descriptions_batch,
     prepare_test_sample,
 )
+from src.data.description import save_descriptions
 
 console = Console()
-
-
-def save_descriptions(results: list, csv_path: str = "descriptions.csv", json_path: str = "descriptions.json"):
-    """
-    생성된 description 결과를 CSV와 JSON 파일로 저장한다.
-
-    Args:
-        results:
-            [{"id": ..., "description_1": ..., "description_2": ...}, ...] 형태의 리스트
-        csv_path:
-            CSV 파일 저장 경로
-        json_path:
-            JSON 파일 저장 경로
-    """
-    # CSV 저장
-    df = pd.DataFrame(results)
-    df.to_csv(csv_path, index=False)
-    console.print(f"[green]✓[/green] 총 {len(results)}개의 description을 [italic]{csv_path}[/italic]에 저장했습니다.")
-
-    # JSON 저장
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-    console.print(f"[green]✓[/green] 총 {len(results)}개의 description을 [italic]{json_path}[/italic]에 저장했습니다.")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -157,8 +135,8 @@ def main(cfg: DictConfig):
     ))
     test_df = load_test_data(test_data_path)
 
-    # 실사용시 주석처리!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
-    # test_df = test_df.head(5)      # 디버그용
+    # 실사용시 주석처리! (디버그용)
+    # test_df = test_df.head(5)
     console.print(f"[green]✓[/green] 테스트 샘플 수: {len(test_df)}")
 
     # 6. description 생성용 샘플 준비
@@ -224,7 +202,9 @@ def main(cfg: DictConfig):
         "[bold blue]Saving Results[/bold blue]",
         border_style="blue"
     ))
-    save_descriptions(results, csv_path=csv_output_path, json_path=json_output_path)
+    # data/ 폴더는 프로젝트 루트 기준으로 저장
+    data_dir = os.path.join(original_cwd, "data")
+    save_descriptions(results, csv_path=csv_output_path, json_path=json_output_path, data_dir=data_dir)
 
     # 10. 샘플 출력
     console.print("\n[bold]샘플 결과 (상위 3개)[/bold]")
