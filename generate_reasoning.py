@@ -1,13 +1,3 @@
-"""
-Reasoning 데이터 생성 스크립트 v2 (Final)
-- 전략: Deductive (연역적) 3단계
-- 모델: GPT-4o mini
-- 특징: 비율 완화 샘플링 (국어↓ 사회/한국사↑), Negative 문제 처리
-
-사용법:
-    OPENAI_API_KEY='sk-...' uv run python generate_reasoning_v2.py
-"""
-
 import os
 import ast
 import time
@@ -16,25 +6,18 @@ import pandas as pd
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# =============================================================================
-# ⚙️ 설정 (여기만 수정)
-# =============================================================================
 
-# OpenAI API 키 (환경변수 또는 직접 입력)
 OPENAI_API_KEY = ""
 
-# 샘플링 설정
 SAMPLE_SIZE = 3000
 RANDOM_SEED = 42
 
-# 비율 완화 설정 (국어 비중 줄이기)
 SAMPLE_RATIO = {
-    'korean': 0.50,   # 50% (원래 74% → 줄임)
-    'society': 0.30,  # 30% (원래 18% → 늘림)
-    'history': 0.20,  # 20% (원래 8% → 늘림)
+    'korean': 0.50,  
+    'society': 0.30,  
+    'history': 0.20,  
 }
 
-# 파일 경로
 INPUT_PATH = "data/combined_train.csv"
 OUTPUT_PATH = "data/combined_train_with_reasoning.csv"
 
@@ -44,10 +27,6 @@ MAX_TOKENS = 400
 RETRY_COUNT = 3
 RETRY_DELAY = 2
 TEMPERATURE = 0.3
-
-# =============================================================================
-# 🎯 프롬프트 설계
-# =============================================================================
 
 SYSTEM_PROMPT = """당신은 한국 수능/모의고사 문제 분석 전문가입니다.
 연역적 추론(Deductive Reasoning)을 사용하여 문제를 분석합니다.
@@ -89,9 +68,6 @@ NEGATIVE_ADDITION = """
 정답인 {answer}번이 왜 지문 내용과 일치하지 않거나 틀린지를 설명하세요.
 다른 선택지들은 지문과 일치하므로 오답입니다."""
 
-# =============================================================================
-# 📊 과목 분류
-# =============================================================================
 
 HISTORY_KEYWORDS = [
     '조선', '고려', '신라', '백제', '고구려', '가야', '발해', '통일신라',
@@ -146,22 +122,19 @@ def is_negative_question(question: str) -> bool:
     return any(pattern in question for pattern in NEGATIVE_PATTERNS)
 
 
-# =============================================================================
-# 🔧 핵심 함수
-# =============================================================================
 
 def init_client():
     """OpenAI 클라이언트 초기화"""
     try:
         from openai import OpenAI
     except ImportError:
-        print("❌ openai 패키지가 없습니다.")
+        print("openai 패키지가 없습니다.")
         print("   실행: pip install openai")
         exit(1)
     
     api_key = OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        print("❌ OPENAI_API_KEY를 설정하세요!")
+        print("OPENAI_API_KEY를 설정하세요!")
         print("   방법 1: 스크립트 상단 OPENAI_API_KEY 변수에 직접 입력")
         print("   방법 2: OPENAI_API_KEY='sk-...' uv run python ...")
         exit(1)
@@ -249,9 +222,7 @@ def process_row(args):
 
 
 def balanced_sample(df: pd.DataFrame, n: int, ratio: dict, seed: int = 42) -> pd.DataFrame:
-    """
-    비율 완화 샘플링: 국어 비중 줄이고 사회/한국사 비중 높임
-    
+    """    
     Args:
         df: 원본 데이터프레임
         n: 총 샘플 수
@@ -299,11 +270,6 @@ def save_checkpoint(df: pd.DataFrame, output_path: str):
     except Exception as e:
         print(f"⚠️ 중간 저장 실패: {e}")
 
-
-# =============================================================================
-# 🚀 메인 함수
-# =============================================================================
-
 def main():
     print("=" * 65)
     print("🚀 Reasoning 데이터 생성 (Deductive 전략)")
@@ -316,28 +282,25 @@ def main():
     print(f"  비율: korean {int(SAMPLE_RATIO['korean']*100)}% / society {int(SAMPLE_RATIO['society']*100)}% / history {int(SAMPLE_RATIO['history']*100)}%")
     print("=" * 65)
     
-    # 클라이언트 초기화
     client = init_client()
-    print("✅ OpenAI API 연결 성공\n")
+    print("OpenAI API 연결 성공\n")
     
-    # 데이터 로드
     if not os.path.exists(INPUT_PATH):
-        print(f"❌ 입력 파일 없음: {INPUT_PATH}")
+        print(f"입력 파일 없음: {INPUT_PATH}")
         exit(1)
     
     df = pd.read_csv(INPUT_PATH)
-    print(f"📂 원본 데이터: {len(df)}개")
+    print(f"원본 데이터: {len(df)}개")
     
-    # 데이터 품질 체크
     null_para = df['paragraph'].isna().sum()
     if null_para > 0:
-        print(f"⚠️ paragraph가 비어있는 데이터: {null_para}개 (처리됨)")
+        print(f"paragraph가 비어있는 데이터: {null_para}개 (처리됨)")
     
     # 과목별 분포 출력
     df_temp = df.copy()
     df_temp['_subject'] = df_temp.apply(lambda x: classify_subject(x.to_dict()), axis=1)
     subject_counts = df_temp['_subject'].value_counts()
-    print(f"\n📊 원본 과목별 분포:")
+    print(f"\n원본 과목별 분포:")
     for subject, count in subject_counts.items():
         pct = count / len(df) * 100
         print(f"   - {subject}: {count}개 ({pct:.1f}%)")
@@ -349,10 +312,10 @@ def main():
         if 'reasoning' in existing_df.columns:
             valid_mask = existing_df['reasoning'].notna() & ~existing_df['reasoning'].str.startswith('[ERROR]', na=False)
             done_count = valid_mask.sum()
-            print(f"\n📌 기존 진행분: {done_count}개 완료")
+            print(f"\n기존 진행분: {done_count}개 완료")
             
             if done_count >= SAMPLE_SIZE:
-                print("✅ 이미 목표 달성!")
+                print("이미 목표 달성!")
                 return
             
             df = existing_df.copy()
@@ -369,10 +332,10 @@ def main():
     needed = SAMPLE_SIZE - already_done
     
     if needed <= 0:
-        print("✅ 이미 목표 달성!")
+        print("이미 목표 달성!")
         return
     
-    print(f"\n🎲 비율 완화 샘플링 중... (필요: {needed}개)")
+    print(f"\n 비율 완화 샘플링 중... (필요: {needed}개)")
     print(f"   목표 비율: korean {int(SAMPLE_RATIO['korean']*100)}% / society {int(SAMPLE_RATIO['society']*100)}% / history {int(SAMPLE_RATIO['history']*100)}%")
     
     sampled, actual_counts = balanced_sample(todo_df, needed, SAMPLE_RATIO, RANDOM_SEED)
@@ -386,18 +349,15 @@ def main():
     print(f"\n📝 생성 대상: {len(todo_indices)}개")
     
     if not todo_indices:
-        print("✅ 모든 샘플 완료!")
+        print("모든 샘플 완료!")
         return
     
-    # 비용 예상
-    est_cost = len(todo_indices) * 0.0002
-    print(f"💰 예상 비용: ${est_cost:.2f} (무료 크레딧 $5 내)")
     
     # 태스크 생성
     tasks = [(client, idx, df.loc[idx].to_dict()) for idx in todo_indices]
     
     # 병렬 처리
-    print(f"\n🔄 생성 시작...\n")
+    print(f"\n생성 시작...\n")
     
     completed = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -423,14 +383,14 @@ def main():
     success_count = total_with_reasoning - error_count
     
     print("\n" + "=" * 65)
-    print("✅ 완료!")
+    print("완료!")
     print("=" * 65)
     print(f"  성공: {success_count}개")
     print(f"  에러: {error_count}개")
     print(f"  저장: {OUTPUT_PATH}")
     
     if error_count > 0:
-        print(f"\n⚠️ 에러 {error_count}개는 재실행하면 자동 재시도됩니다.")
+        print(f"\n 에러 {error_count}개는 재실행하면 자동 재시도됩니다.")
     
     # 샘플 출력
     print("\n" + "-" * 65)
