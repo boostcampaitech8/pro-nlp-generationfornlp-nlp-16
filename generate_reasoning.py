@@ -6,18 +6,17 @@ import pandas as pd
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# =============================================================================
+# ⚙️ 설정 (여기만 수정하세요)
+# =============================================================================
 
-OPENAI_API_KEY = ""
+# OpenAI API 키 (https://platform.openai.com/api-keys)
+OPENAI_API_KEY = " [API_KEY_REMOVED] # 여기에 입력 또는 환경변수 OPENAI_API_KEY 사용
 
-SAMPLE_SIZE = 3000
-RANDOM_SEED = 42
+# 샘플 개수 (None이면 전체, 숫자면 해당 개수만)
+SAMPLE_SIZE = 3000  # 추천: 3000개 ($0.50)
 
-SAMPLE_RATIO = {
-    'korean': 0.50,  
-    'society': 0.30,  
-    'history': 0.20,  
-}
-
+# 파일 경로
 INPUT_PATH = "data/combined_train.csv"
 OUTPUT_PATH = "data/combined_train_with_reasoning.csv"
 
