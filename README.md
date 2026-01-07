@@ -1,156 +1,227 @@
-# Korean SAT Solver
+# MoA(Mixture-of-Agents) 기반 수능형 문제 추론 파이프라인
 
-한국어 수능형 문제 풀이를 위한 LLM 파인튜닝 프로젝트입니다. `beomi/gemma-ko-2b` 모델을 LoRA를 사용하여 파인튜닝합니다.
+소형 모델이 지문 정보를 정제·요약·필터링하고
+대형 추론 특화 모델이 해당 정보만을 활용해 최종 정답을 선택하는
+다단계(MoA) 추론 파이프라인을 구현 
 
-## 프로젝트 구조
+## 핵심 아이디어
+원문 전체를 그대로 대형 모델에 입력하는 대신,
+잡음이 제거된 근거 중심 정보를 제공하여
+정답률(Accuracy) 향상
+추론 결과의 분산 감소
+오답 선택지에 대한 혼동 감소를 유도
 
+## 전체 파이프라인 구조
+```
+      [입력 문제]
+          │
+          ▼
+  [sktAX-4.0-light]
+(필터링 · 요약 · 근거 정리)
+          │ └─ 핵심 근거 문장
+          │ └─ 오답 선택지 제거 (1~2개)
+          │ └─ 구조화된 설명 2종 생성
+          ▼
+   [EXAONE-4.0-32B]
+      (최종 추론기)
+          │
+          ▼
+      [정답 선택]
+```
+## 프로젝트 파일 구조
 ```
 korean_sat_solver/
-├── src/
-│   ├── __init__.py
-│   ├── data/
-│   │   ├── __init__.py
-│   │   ├── dataset.py          # 데이터 로드 함수
-│   │   └── preprocessing.py    # 프롬프트 생성, 토큰화
-│   ├── model/
-│   │   ├── __init__.py
-│   │   └── model.py            # 모델 로드, LoRA 설정
-│   ├── training/
-│   │   ├── __init__.py
-│   │   ├── trainer.py          # SFTTrainer 설정
-│   │   └── metrics.py          # 평가 메트릭
-│   ├── inference/
-│   │   ├── __init__.py
-│   │   └── predict.py          # 추론 로직
-│   └── utils/
-│       ├── __init__.py
-│       └── seed.py             # 시드 설정
-├── train.py                    # 학습 진입점
-├── inference.py                # 추론 진입점
+├── conf
+│   ├── config.yaml
+│   ├── dapt
+│   │   ├── config.yaml
+│   │   ├── model.yaml
+│   │   └── training.yaml
+│   ├── inference
+│   │   ├── default.yaml
+│   │   └── description.yaml
+│   ├── model
+│   │   ├── gemma.yaml
+│   │   └── sktAX.yaml
+│   └── training
+│       └── default.yaml
+├── src
+│   ├── dapt
+│   │   ├── dataset.py
+│   │   └── trainer.py
+│   ├── data
+│   │   ├── dataset.py
+│   │   ├── description.py
+│   │   └── preprocessing.py
+│   ├── inference
+│   │   ├── description_prompt.py
+│   │   ├── exaone_prompts.py
+│   │   ├── generate_description.py
+│   │   └── predict.py
+│   ├── model
+│   │   └── model.py
+│   ├── training
+│   │   ├── custom_train.py
+│   │   ├── losses.py
+│   │   ├── metrics.py
+│   │   └── trainer.py
+│   └── utils
+│       └── seed.py
+├── models
+│   └── EXAONE-4.0-32B-Q5_K_M.gguf
+├── outputs
+│   ├── dapt
+│   │   └── 2026-01-04
+│   ├── inference_description
+│   └── moa
+├── data -> /data/ephemeral/home/shared/data
+├── llama.cpp
+├── train.py
+├── train_dapt.py
+├── inference.py
+├── inference_description.py
+├── inference_exaone.py
+├── inference_pipeline.py
+├── README.md
+├── pyproject.toml
 ├── requirements.txt
-└── README.md
+└── uv.lock
 ```
 
 ## 모듈 설명
+1. inference_pipeline.py - 통합 파이프라인
+  - Step 1: description 생성 (inference_description.py 실행)
+  - Step 2: EXAONE 추론 (inference_exaone.py 실행)
 
-### `src/data/`
-- **dataset.py**: CSV 파일 로드 및 JSON 파싱, DataFrame 변환
-- **preprocessing.py**: 프롬프트 템플릿 정의, 채팅 형식 변환, 토큰화
+2. inference_description.py - Description 생성
+  - sktAX 모델로 테스트 문제 분석 힌트 생성
+  - 체크포인트 자동 탐색 (outputs/dapt, outputs/train)
 
-### `src/model/`
-- **model.py**: 모델/토크나이저 로드, LoRA 설정, chat_template 설정
+3. inference_exaone.py - 최종 추론
+  - 3가지 모드로 추론 후 다수결 투표:
+    - EXAONE만 (reasoning, descriptions 없이)
+    - EXAONE + descriptions (reasoning)
+    - EXAONE + descriptions (non-reasoning)
+  - 결과 저장: outputs/moa/submission.csv
 
-### `src/training/`
-- **trainer.py**: SFTTrainer, DataCollator, SFTConfig 설정
-- **metrics.py**: 정확도 계산, logits 전처리
+4. src/data/description.py - Description 유틸리티
+  - load_descriptions_json(): descriptions.json 로드
+  - save_descriptions(): description 결과 저장
 
-### `src/inference/`
-- **predict.py**: 추론 루프, 결과 저장
+5. src/inference/ - Inference 모듈
+  - generate_description.py: description 생성 로직
+  - exaone_prompts.py: EXAONE 프롬프트 템플릿
 
-### `src/utils/`
-- **seed.py**: 난수 시드 고정
+## 설치 및 환경 설정
 
-## 설치
+### 자동 설정
+
+- `setup.sh` 스크립트로 환경을 자동 설정합니다.
+```bash
+bash setup.sh
+```
+
+### 수동 설정
+
+1. 작업 공간 및 캐시 경로 설정
 
 ```bash
-# 가상환경 생성 (권장)
-python3.10 -m venv --system-site-packages venv
-source venv/bin/activate
+# 작업 공간 설정
+WORK_DIR="/data/ephemeral/home/workspace"
+mkdir -p "$WORK_DIR"
+cd "$WORK_DIR"
 
-# 패키지 설치
-pip install --upgrade pip
-pip install -r requirements.txt
+# 임시 파일 경로 설정
+export TMPDIR="/data/ephemeral/tmp"
+mkdir -p "$TMPDIR"
+export TEMP="$TMPDIR"
+export TMP="$TMPDIR"
+
+# 캐시 경로 설정
+export XDG_CACHE_HOME="/data/ephemeral/home/shared/cache"
+export PIP_CACHE_DIR="/data/ephemeral/home/shared/cache/pip"
+export UV_CACHE_DIR="/data/ephemeral/home/shared/cache/uv"
+export HF_HOME="/data/ephemeral/home/shared/cache/huggingface"
+
+# 캐시 디렉토리 생성
+mkdir -p "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$UV_CACHE_DIR" "$HF_HOME"
 ```
+
+2.  CUDA Toolkit 설치
+
+```bash
+# CUDA 12.2 다운로드 및 설치
+cd workspace
+wget https://developer.download.nvidia.com/compute/cuda/12.2.0/local_installers/cuda_12.2.0_535.54.03_linux.run
+chmod +x cuda_12.2.0_535.54.03_linux.run
+sh cuda_12.2.0_535.54.03_linux.run --silent --toolkit
+
+# 심볼릭 링크 생성
+ln -sf /usr/local/cuda-12.2 /usr/local/cuda
+
+# 환경 변수 설정
+export PATH="/usr/local/cuda/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+export CUDACXX="/usr/local/cuda/bin/nvcc"
+```
+
+3. python 환경
+
+```bash
+uv sync
+```
+
+4. llama.cpp 빌드
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+rm -rf build
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j 6
+```
+
 
 ## 사용법
 
-### 학습
+1. 모델 다운로드
 
 ```bash
-# train.py 내 경로 설정 후 실행
-python train.py
+cd workspace 
+
+uv run python -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='LGAI-EXAONE/EXAONE-4.0-32B-GGUF',
+    filename='EXAONE-4.0-32B-Q4_K_M.gguf',
+    local_dir='./models',
+    local_dir_use_symlinks=False
+)
+"
 ```
 
-**설정 항목** (train.py 내에서 수정):
-- `TRAIN_DATA_PATH`: 학습 데이터 경로
-- `MODEL_NAME`: 베이스 모델명
-- `OUTPUT_DIR`: 체크포인트 저장 경로
-- `MAX_SEQ_LENGTH`: 최대 시퀀스 길이
-- `NUM_EPOCHS`: 학습 에폭 수
-- `LEARNING_RATE`: 학습률
+2. 추론 엔진 실행
 
-### 추론
+- EXAONE 4.0 32B 서버 실행 
 
 ```bash
-# inference.py 내 경로 설정 후 실행
-python inference.py
+./llama.cpp/build/bin/llama-server \
+  -m ./models/EXAONE-4.0-32B-Q5_K_M.gguf \
+  -c 51000 \
+  -np 3 \
+  -cb \
+  -fa on \
+  --port 8000 \
+  --host 0.0.0.0
 ```
 
-**설정 항목** (inference.py 내에서 수정):
-- `CHECKPOINT_PATH`: 학습된 체크포인트 경로
-- `TEST_DATA_PATH`: 테스트 데이터 경로
-- `OUTPUT_PATH`: 결과 저장 경로
+3. 추론 진행
 
-## 데이터 형식
-
-### 입력 데이터 (train.csv / test.csv)
+```bash
+uv run inference_pipeline.py                      # 전체 파이프라인 실행
+uv run inference_pipeline.py --skip-description   # description 건너뛰고 EXAONE만 실행
+uv run inference_pipeline.py --description-only   # description만 생성
 ```
-id,paragraph,problems
-generation-for-nlp-0,"지문 내용...","{""question"": ""질문"", ""choices"": [""선택지1"", ...], ""answer"": 1, ""question_plus"": ""보기""}"
-```
-
-### 출력 데이터 (output.csv)
-```
-id,answer
-generation-for-nlp-0,2
-generation-for-nlp-1,4
-```
-
-## 모델 구성
-
-- **Base Model**: `beomi/gemma-ko-2b`
-- **Fine-tuning**: LoRA (Low-Rank Adaptation)
-  - r: 6
-  - lora_alpha: 8
-  - lora_dropout: 0.05
-  - target_modules: ['q_proj', 'k_proj']
-
-## 프롬프트 템플릿
-
-```
-지문:
-{paragraph}
-
-질문:
-{question}
-
-<보기>:  # (있을 경우)
-{question_plus}
-
-선택지:
-1 - {choice1}
-2 - {choice2}
-...
-
-1, 2, 3, 4, 5 중에 하나를 정답으로 고르세요.
-정답:
-```
-
-## 주요 의존성
-
-- transformers==4.40.2
-- trl==0.11.4
-- peft==0.13.2
-- torch
-- datasets
-- evaluate
-- scikit-learn
 
 ## 참고사항
-
-- VRAM 제약으로 인해 입력 길이가 1024 토큰을 초과하는 데이터는 학습에서 제외됩니다.
-- 더 긴 데이터를 포함하면 성능 향상이 가능합니다.
-
-## 라이선스
-
-[라이선스 정보 추가]
+Paper: [Mixture-of-Agents Enhances Large Language Model Capabilities](https://arxiv.org/abs/2406.04692)
