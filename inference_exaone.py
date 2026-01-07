@@ -17,53 +17,13 @@ from src.inference.exaone_prompts import (
     create_user_prompt_basic,
     create_user_prompt_with_descriptions,
 )
+from src.data.description import load_descriptions_json
 
 console = Console()
 
-# Load test data
-df_test = pd.read_csv("./data/test.csv")
-
-
-# # TEST MODE: Use only first 10 rows (comment out for full run)
-# df_test = df_test.head(5).reset_index(drop=True)
-
-# Load descriptions (무조건 있다고 가정)
-descriptions_dict = {}
-descriptions_path = "descriptions.json"
-
-console.print("\n")
-console.print(Panel.fit(
-    "[bold cyan]EXAONE Inference with MoA (3-Mode Ensemble)[/bold cyan]",
-    border_style="cyan"
-))
-
-if not os.path.exists(descriptions_path):
-    console.print(f"[red]✗[/red] Description 파일을 찾을 수 없습니다: [italic]{descriptions_path}[/italic]")
-    console.print("[red]파이프라인을 중단합니다.[/red]")
-    sys.exit(1)
-
-console.print(f"[green]✓[/green] Description 파일을 찾았습니다: [italic]{descriptions_path}[/italic]")
-with open(descriptions_path, "r", encoding="utf-8") as f:
-    descriptions_list = json.load(f)
-
-# id를 키로 하는 딕셔너리로 변환
-for item in descriptions_list:
-    sample_id = str(item["id"])
-    descriptions_dict[sample_id] = item
-
-console.print(f"[green]✓[/green] {len(descriptions_dict)}개의 description을 로드했습니다.")
-console.print("[bold yellow]3가지 모드로 추론합니다:[/bold yellow]")
-console.print("  1. EXAONE만 (reasoning + descriptions 없이)")
-console.print("  2. EXAONE + descriptions (reasoning + SKT A.X descriptions)")
-console.print("  3. EXAONE + descriptions (non-reasoning + SKT A.X descriptions)")
-console.print("  → 다수결로 최종 정답 선택\n")
-
-# Initialize client
-client = AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key-required")
-
 
 # Async inference functions
-async def get_inference(system_msg, user_content, seed):
+async def get_inference(client, system_msg, user_content, seed):
     """
     Inference 실행하고 content와 reasoning_content를 모두 반환
     
@@ -99,7 +59,7 @@ async def get_inference(system_msg, user_content, seed):
         return "Error", None
 
 
-async def process_row(index, row, seed):
+async def process_row(client, descriptions_dict, index, row, seed):
     """
     3가지 모드로 추론:
     1. EXAONE만 (reasoning + descriptions 없이)
@@ -126,7 +86,7 @@ async def process_row(index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(SYSTEM_PROMPT_BASIC, user_content_1, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_BASIC, user_content_1, seed))
 
     # 모드 2: EXAONE + descriptions (reasoning + SKT A.X descriptions)
     user_content_2 = create_user_prompt_with_descriptions(
@@ -139,7 +99,7 @@ async def process_row(index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(SYSTEM_PROMPT_MOA, user_content_2, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA, user_content_2, seed))
 
     # 모드 3: EXAONE + descriptions (non-reasoning + SKT A.X descriptions)
     user_content_3 = create_user_prompt_with_descriptions(
@@ -152,7 +112,7 @@ async def process_row(index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(SYSTEM_PROMPT_MOA_NON_REASONING, user_content_3, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA_NON_REASONING, user_content_3, seed))
 
     results = await asyncio.gather(*tasks)
     
@@ -163,11 +123,16 @@ async def process_row(index, row, seed):
     return index, contents, reasoning_contents
 
 
-async def main():
+async def main(df_test, descriptions_dict, client):
     console.print(Panel.fit(
         "[bold green]Starting Inference with EXAONE-4.0-32B[/bold green]",
         border_style="green"
     ))
+
+    # Create output directory if it doesn't exist
+    output_dir = "outputs/moa"
+    os.makedirs(output_dir, exist_ok=True)
+    output_csv_path = os.path.join(output_dir, "TestSet_Inference_EXAONE-4.0-32B.csv")
 
     with Progress(
         SpinnerColumn(),
@@ -180,7 +145,7 @@ async def main():
             task = progress.add_task(f"[cyan]Processing loop s={s}", total=len(df_test))
 
             for i in range(len(df_test)):
-                idx, results, reasoning_contents = await process_row(i, df_test.loc[i], s)
+                idx, results, reasoning_contents = await process_row(client, descriptions_dict, i, df_test.loc[i], s)
 
                 # 3가지 모드 결과 저장
                 # resp_0: EXAONE만 (reasoning + descriptions 없이)
@@ -197,11 +162,11 @@ async def main():
                 progress.update(task, advance=1, description=f"[cyan]Processing s={s}, sample {i+1}/{len(df_test)}")
 
                 if i % 5 == 4:
-                    df_test.to_csv("TestSet_Inference_EXAONE-4.0-32B.csv", index=False)
+                    df_test.to_csv(output_csv_path, index=False)
 
-            df_test.to_csv("TestSet_Inference_EXAONE-4.0-32B.csv", index=False)
+            df_test.to_csv(output_csv_path, index=False)
 
-    console.print(f"\n[green]✓[/green] Inference 완료: [italic]TestSet_Inference_EXAONE-4.0-32B.csv[/italic]")
+    console.print(f"\n[green]✓[/green] Inference 완료: [italic]{output_csv_path}[/italic]")
 
     # Create submission.csv with answer extraction
     console.print("\n")
@@ -317,6 +282,36 @@ async def main():
 
 
 if __name__ == "__main__":
+    DESCRIPTIONS_PATH = "data/descriptions.json"
+    
+    # 테스트 데이터 로드
+    df_test = pd.read_csv("./data/test.csv")
+    # 실사용시 주석처리! (디버그용)
+    # df_test = df_test.head(5).reset_index(drop=True)
+    
+    console.print("\n")
+    console.print(Panel.fit(
+        "[bold cyan]EXAONE Inference with MoA (3-Mode Ensemble)[/bold cyan]",
+        border_style="cyan"
+    ))
+    
+    # descriptions.json 로드
+    if not os.path.exists(DESCRIPTIONS_PATH):
+        console.print(f"[red]✗[/red] Description 파일을 찾을 수 없습니다: [italic]{DESCRIPTIONS_PATH}[/italic]")
+        console.print("[red]파이프라인을 중단합니다.[/red]")
+        sys.exit(1)
+    
+    descriptions_dict = load_descriptions_json(DESCRIPTIONS_PATH)
+    
+    console.print("[bold yellow]3가지 모드로 추론합니다:[/bold yellow]")
+    console.print("  1. EXAONE만 (reasoning + descriptions 없이)")
+    console.print("  2. EXAONE + descriptions (reasoning + SKT A.X descriptions)")
+    console.print("  3. EXAONE + descriptions (non-reasoning + SKT A.X descriptions)")
+    console.print("  → 다수결로 최종 정답 선택\n")
+    
+    # Initialize client
+    client = AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key-required")
+    
     time.sleep(5)
-    asyncio.run(main())
+    asyncio.run(main(df_test, descriptions_dict, client))
     time.sleep(5)

@@ -41,11 +41,11 @@ def run_exaone_inference():
     ))
 
     # descriptions.json 존재 확인
-    if os.path.exists("descriptions.json"):
-        console.print("[green]✓[/green] descriptions.json 파일을 찾았습니다.")
+    if os.path.exists("data/descriptions.json"):
+        console.print("[green]✓[/green] data/descriptions.json 파일을 찾았습니다.")
         console.print("[green]✓[/green] MoA 모드로 실행됩니다.\n")
     else:
-        console.print("[yellow]⚠[/yellow] descriptions.json 파일이 없습니다.")
+        console.print("[yellow]⚠[/yellow] data/descriptions.json 파일이 없습니다.")
         console.print("[yellow]⚠[/yellow] 기본 모드로 실행됩니다.\n")
 
     cmd = [sys.executable, "inference_exaone.py"]
@@ -120,10 +120,10 @@ def main():
     files_created = []
     if os.path.exists("descriptions.csv"):
         files_created.append("descriptions.csv")
-    if os.path.exists("descriptions.json"):
-        files_created.append("descriptions.json")
-    if os.path.exists("TestSet_Inference_EXAONE-4.0-32B.csv"):
-        files_created.append("TestSet_Inference_EXAONE-4.0-32B.csv")
+    if os.path.exists("data/descriptions.json"):
+        files_created.append("data/descriptions.json")
+    if os.path.exists("outputs/moa/TestSet_Inference_EXAONE-4.0-32B.csv"):
+        files_created.append("outputs/moa/TestSet_Inference_EXAONE-4.0-32B.csv")
     if os.path.exists("outputs/moa/submission.csv"):
         files_created.append("outputs/moa/submission.csv")
 
