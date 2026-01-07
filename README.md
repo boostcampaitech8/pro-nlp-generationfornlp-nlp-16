@@ -5,18 +5,23 @@
 다단계(MoA) 추론 파이프라인을 구현 
 
 ## 핵심 아이디어
-원문 전체를 그대로 대형 모델에 입력하는 대신,
-잡음이 제거된 근거 중심 정보를 제공하여
-정답률(Accuracy) 향상
-추론 결과의 분산 감소
-오답 선택지에 대한 혼동 감소를 유도
+지문 + 문제 + 선택지만 대형 모델에 입력하는 대신,
+문제 해결 및 reasoning 과정에 도움이 되는 관점이나 정보를 같이 제공하면
+정답률(Accuracy) 향상을 기대할 수 있을 것이다.
 
 ## 전체 파이프라인 구조
 ```
+  [AIHub 국어 문제 데이터]
+          │
+          ▼
+      [DAPT 학습]
+  (sktAX 도메인 적응)
+          │
+          ▼
       [입력 문제]
           │
           ▼
-  [sktAX-4.0-light]
+  [sktAX-4.0-light (DAPT)]
 (필터링 · 요약 · 근거 정리)
           │ └─ 핵심 근거 문장
           │ └─ 오답 선택지 제거 (1~2개)
@@ -89,28 +94,49 @@ korean_sat_solver/
 ```
 
 ## 모듈 설명
-1. inference_pipeline.py - 통합 파이프라인
-  - Step 1: description 생성 (inference_description.py 실행)
-  - Step 2: EXAONE 추론 (inference_exaone.py 실행)
 
-2. inference_description.py - Description 생성
-  - sktAX 모델로 테스트 문제 분석 힌트 생성
-  - 체크포인트 자동 탐색 (outputs/dapt, outputs/train)
+### 학습 모듈
 
-3. inference_exaone.py - 최종 추론
-  - 3가지 모드로 추론 후 다수결 투표:
-    - EXAONE만 (reasoning, descriptions 없이)
-    - EXAONE + descriptions (reasoning)
-    - EXAONE + descriptions (non-reasoning)
-  - 결과 저장: outputs/moa/submission.csv
+1. **train_dapt.py** - DAPT (Domain-Adaptive Pre-Training) 학습
+   - sktAX 모델을 국어 문제 도메인에 적응시키는 사전 학습
+   - Causal Language Modeling (CLM) 방식
+   - LoRA를 사용한 파라미터 효율적 학습 (기본값)
+   - 설정: `conf/dapt/config.yaml`
 
-4. src/data/description.py - Description 유틸리티
-  - load_descriptions_json(): descriptions.json 로드
-  - save_descriptions(): description 결과 저장
+2. **src/dapt/dataset.py** - DAPT 데이터 처리
+   - AIHub 국어 문제 데이터 로드 및 전처리
+   - 지문, 선택지, 해설을 연속 텍스트로 변환
+   - 토크나이징 및 train/eval 분할
 
-5. src/inference/ - Inference 모듈
-  - generate_description.py: description 생성 로직
-  - exaone_prompts.py: EXAONE 프롬프트 템플릿
+3. **src/dapt/trainer.py** - DAPT 학습 유틸리티
+   - 모델/토크나이저 로드
+   - LoRA 적용
+   - Trainer 생성
+
+### 추론 모듈
+
+1. **inference_pipeline.py** - 통합 파이프라인
+   - Step 1: description 생성 (inference_description.py 실행)
+   - Step 2: EXAONE 추론 (inference_exaone.py 실행)
+
+2. **inference_description.py** - Description 생성
+   - sktAX 모델로 테스트 문제 분석 힌트 생성
+   - 체크포인트 자동 탐색 (outputs/dapt, outputs/train)
+
+3. **inference_exaone.py** - 최종 추론
+   - 3가지 모드로 추론 후 다수결 투표:
+     - EXAONE만 (reasoning, descriptions 없이)
+     - EXAONE + descriptions (reasoning)
+     - EXAONE + descriptions (non-reasoning)
+   - 결과 저장: outputs/moa/submission.csv
+
+4. **src/data/description.py** - Description 유틸리티
+   - load_descriptions_json(): descriptions.json 로드
+   - save_descriptions(): description 결과 저장
+
+5. **src/inference/** - Inference 모듈
+   - generate_description.py: description 생성 로직
+   - exaone_prompts.py: EXAONE 프롬프트 템플릿
 
 ## 설치 및 환경 설정
 
@@ -183,6 +209,32 @@ cmake --build build --config Release -j 6
 
 
 ## 사용법
+
+### 모델 학습
+
+#### DAPT (Domain-Adaptive Pre-Training)
+
+sktAX 모델을 국어 문제 도메인에 적응시키는 사전 학습:
+
+```bash
+uv run train_dapt.py
+```
+
+**설정 파일**: `conf/dapt/config.yaml`
+- 모델: `skt/A.X-4.0-Light`
+- 데이터: `data/aihub_workbook_final.csv`
+- 학습 방식: LoRA (기본값)
+- 출력: `outputs/dapt/YYYY-MM-DD/HH-MM-SS/`
+
+**주요 설정**:
+- `max_length: 1024` (메모리 최적화)
+- `gradient_accumulation_steps: 16`
+- `gradient_checkpointing: true`
+- `fp16: true`
+
+학습된 모델은 `inference_description.py`에서 자동으로 탐색되어 사용됩니다.
+
+### 추론 파이프라인
 
 1. 모델 다운로드
 
