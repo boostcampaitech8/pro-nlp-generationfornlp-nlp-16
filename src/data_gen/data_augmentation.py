@@ -57,20 +57,54 @@ def create_batch_request_file(
             # custom_id는 이후 결과 매핑을 위한 고유 식별자
             custom_id = f"{article['article_id']}-q{problem_idx + 1}"
 
+            # Fine-tuned 모델 사용 시 프롬프트 단순화
+            # 이전 (base model 사용 시):
+            # "model": "gpt-4o-mini",
+            # "messages": [
+            #     {"role": "system", "content": SYSTEM_PROMPT},
+            #     {"role": "user", "content": create_prompt_for_article(article)},
+            # ],
+            #
+            # 현재 (fine-tuned model 사용 시): 학습 데이터와 동일한 간단한 프롬프트 사용
             request = {
                 "custom_id": custom_id,
                 "method": "POST",
                 "url": "/v1/chat/completions",
                 "body": {
-                    "model": "gpt-4o-mini",
+                    "model": "ft:gpt-4o-mini-2024-07-18:ainfo:ksat-qa-finetuned:Cs0hEg5r",
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": create_prompt_for_article(article)},
+                        {
+                            "role": "system",
+                            "content": "당신은 지문으로 수능형 객관식 문제를 생성하는 전문가입니다.",
+                        },
+                        {
+                            "role": "user",
+                            "content": f"""다음 지문을 읽고 JSON 형식으로 문제를 생성하세요.
+
+**출력 형식:**
+반드시 아래의 JSON 형식으로만 출력하세요. 다른 설명이나 주석은 포함하지 마세요.
+
+{{
+  "paragraph": "지문 (제공된 지문 그대로)",
+  "question": "문제",
+  "choices": ["선택지1", "선택지2", "선택지3", "선택지4", "선택지5"],
+  "answer": 1,
+  "question_plus": "내용..." 또는 null
+}}
+
+**중요**: 가능하면 question_plus 필드에 문제 해결에 도움이 되는 추가 정보를 포함하세요.
+question_plus는 문제를 푸는 데 필요한 배경지식이나 판단 기준을 제공해야 합니다.
+예: 핵심 개념 정의, 판단 기준, 이론/원리 설명, 배경지식 등
+
+지문:
+{article['content']}""",
+                        },
                     ],
                     "temperature": 0.7,
                     "response_format": {"type": "json_object"},
                 },
             }
+
             requests.append(request)
 
     # JSONL 파일로 저장
@@ -181,13 +215,53 @@ def download_results(client: OpenAI, batch: Dict[str, Any], output_file: str) ->
     """
     console.print(f"[cyan]Downloading results...[/cyan]")
 
-    # 배치 결과 파일 다운로드 및 저장
+    # 에러 파일이 있으면 먼저 다운로드 및 확인
+    if batch.error_file_id:
+        console.print(f"[red]⚠️  Errors detected! Downloading error file...[/red]")
+        error_file = output_file.replace(".jsonl", "_errors.jsonl")
+        error_response = client.files.content(batch.error_file_id)
+
+        with open(error_file, "wb") as f:
+            f.write(error_response.content)
+
+        console.print(f"[yellow]Error file saved to: {error_file}[/yellow]")
+
+        # 첫 번째 에러 출력
+        with open(error_file, "r", encoding="utf-8") as f:
+            first_line = f.readline()
+            if first_line:
+                first_error = json.loads(first_line)
+                console.print("[red]First error details:[/red]")
+                console.print(json.dumps(first_error, indent=2, ensure_ascii=False))
+
+    # output_file_id가 없으면 모든 요청이 실패한 것
+    if not batch.output_file_id:
+        error_msg = (
+            f"All {batch.request_counts.failed} requests failed! "
+            f"No successful results to download. "
+        )
+        if batch.error_file_id:
+            error_msg += f"Check error file: {error_file}"
+        else:
+            error_msg += "No error file available."
+
+        console.print(f"[red]{error_msg}[/red]")
+        raise ValueError(error_msg)
+
+    # 성공한 결과 파일 다운로드 및 저장
     file_response = client.files.content(batch.output_file_id)
 
     with open(output_file, "wb") as f:
         f.write(file_response.content)
 
     console.print(f"[green]Results saved to {output_file}[/green]")
+
+    # 성공/실패 통계 출력
+    console.print(f"[cyan]Summary:[/cyan]")
+    console.print(f"  - Completed: {batch.request_counts.completed}")
+    console.print(f"  - Failed: {batch.request_counts.failed}")
+    console.print(f"  - Total: {batch.request_counts.total}")
+
     return output_file
 
 
@@ -298,6 +372,11 @@ def save_to_csv(problems: List[Dict[str, Any]], output_csv: str):
 
     # DataFrame 변환 후 CSV 저장
     df = pd.DataFrame(rows)
+
+    # 부모 디렉토리가 없으면 생성
+    output_path = Path(output_csv)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     df.to_csv(output_csv, index=False, encoding="utf-8")
 
     console.print(f"[green]Saved {len(rows)} problems to {output_csv}[/green]")
