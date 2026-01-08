@@ -44,61 +44,53 @@ MoA(Mixture-of-Agents) 계열 선행 연구에 따르면,
 ```
 korean_sat_solver/
 ├── conf
-│   ├── config.yaml
-│   ├── dapt
-│   │   ├── config.yaml
-│   │   ├── model.yaml
-│   │   └── training.yaml
-│   ├── inference
-│   │   ├── default.yaml
-│   │   └── description.yaml
-│   ├── model
-│   │   ├── gemma.yaml
-│   │   └── sktAX.yaml
-│   └── training
-│       └── default.yaml
+│   ├── config.yaml              # 메인 설정 파일
+│   ├── dapt
+│   │   ├── config.yaml          # DAPT 메인 설정
+│   │   ├── model.yaml           # DAPT 모델 설정
+│   │   └── training.yaml        # DAPT 학습 파라미터
+│   ├── inference
+│   │   ├── default.yaml
+│   │   └── description.yaml     # Description 생성 설정
+│   ├── model
+│   │   └── sktAX.yaml           # sktAX 모델 설정
+│   └── training
+│       └── default.yaml
 ├── src
-│   ├── dapt
-│   │   ├── dataset.py
-│   │   └── trainer.py
-│   ├── data
-│   │   ├── dataset.py
-│   │   ├── description.py
-│   │   └── preprocessing.py
-│   ├── inference
-│   │   ├── description_prompt.py
-│   │   ├── exaone_prompts.py
-│   │   ├── generate_description.py
-│   │   └── predict.py
-│   ├── model
-│   │   └── model.py
-│   ├── training
-│   │   ├── custom_train.py
-│   │   ├── losses.py
-│   │   ├── metrics.py
-│   │   └── trainer.py
-│   └── utils
-│       └── seed.py
+│   ├── dapt                     # DAPT 학습 모듈
+│   │   ├── dataset.py           # DAPT 데이터셋 처리
+│   │   └── trainer.py           # DAPT 학습 유틸리티
+│   ├── data
+│   │   ├── dataset.py           # 데이터셋 로드 및 전처리
+│   │   ├── description.py       # Description 유틸리티
+│   │   └── preprocessing.py     # 데이터 전처리
+│   ├── inference
+│   │   ├── description_prompt.py    # Description 프롬프트
+│   │   ├── exaone_prompts.py        # EXAONE 프롬프트 템플릿
+│   │   └── generate_description.py  # Description 생성 로직
+│   ├── model 
+│   │   └── model.py
+│   └── utils
+│       └── seed.py
 ├── models
-│   └── EXAONE-4.0-32B-Q5_K_M.gguf
-├── outputs
-│   ├── dapt
-│   │   └── 2026-01-04
-│   ├── inference_description
-│   └── moa
-├── data -> /data/ephemeral/home/shared/data
-├── llama.cpp
-├── train.py
-├── train_dapt.py
-├── inference.py
-├── inference_description.py
-├── inference_exaone.py
-├── inference_pipeline.py
-├── README.md
-├── pyproject.toml
-├── requirements.txt
-└── uv.lock
-```
+│   └── EXAONE-4.0-32B-Q5_K_M.gguf  # EXAONE 양자화 모델
+├── notebook
+├── outputs                      # 출력 결과 디렉토리
+│   ├── dapt                     # DAPT 학습 체크포인트 및 로그
+│   │   └── 2026-01-04
+│   ├── inference_description    # Description 생성 결과
+│   └── moa                      # MoA 파이프라인 최종 추론 결과
+├── data
+├── llama.cpp                    # llama.cpp 라이브러리
+├── train_dapt.py                # DAPT 학습 실행 스크립트
+├── inference.py                 # 기본 추론 스크립트
+├── inference_description.py     # Description 생성 스크립트
+├── inference_exaone.py          # EXAONE 추론 스크립트
+├── inference_pipeline.py        # 전체 MoA 파이프라인 실행
+├── README.md                    # 프로젝트 문서
+├── pyproject.toml               # Python 프로젝트 설정
+├── requirements.txt             # Python 의존성 목록
+└── uv.lock                      # uv 패키지 잠금 파일
 
 ## 모듈 설명
 
