@@ -1,0 +1,18 @@
+defaults:
+  - model: qwen32b
+  - training: default
+  - inference: default
+  - _self_
+
+seed: 42
+data:
+  train_path: "data/combined_train_with_reasoning.csv"
+  test_path: "data/test.csv"
+  max_length: 2048
+  test_size: 0.1
+
+hydra:
+  job:
+    chdir: true 
+  run:
+    dir: outputs/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,0 +1,31 @@
+name: "skt/A.X-4.0-Light"
+response_template: "<|im_start|><|assistant|>"
+peft:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  target_modules: ['q_proj', 'k_proj']
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
