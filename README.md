@@ -1,4 +1,4 @@
-# Korean SAT Solver
+# CSAT-Solver: Korean SAT Solver
 
 ## 프로젝트 개요
 
@@ -34,10 +34,8 @@
 | 기법 | 설명 |
 | :--- | :--- |
 | **Ensemble** | 다양한 실험 브랜치 및 모델 결과값을 결합하여 정답률 극대화 |
-| **Selective Inference** | 기존 모델 결과값에서 예측이 엇갈리는 고난이도 문제셋 선별 및 재추론 |
+| **Selective Inference** | 모델 간 예측이 불일치하는 문항을 선별하여 고성능 모델(MoA)로 재추론 |
 | **MoA** | **Mixture of Agents** 구성을 통한 다단계 분석 및 정답 도출 (하단 상세 참고) |
-
-<br>
 
 <details>
   <summary><h4 style="display: inline;">&nbsp;Mixture of Agents (MoA) 상세 구조</h4></summary>
@@ -116,7 +114,6 @@ korean_sat/
 <br>
 
 ## 주요 라이브러리 (Main Libraries)
----
 핵심적으로 사용된 라이브러리와 버전 정보입니다. (`pyproject.toml` 기준)
 
 | 라이브러리 | 역할 | 버전(최소) |
@@ -197,8 +194,6 @@ uv run inference.py inference.output_file="my_submission.csv"
 | **Llama** | [`experiment/model_select_llama`](https://github.com/boostcampaitech8/pro-nlp-generationfornlp-nlp-16/tree/experiment/model_select_llama) |
 | **A.X** | [`experiment/model_select_AX`](https://github.com/boostcampaitech8/pro-nlp-generationfornlp-nlp-16/tree/experiment/model_select_AX) |
 
-<br>
-
 <details>
 <summary><h3 style="display: inline;">Branch 상세 설명</h3></summary>
 
@@ -273,7 +268,7 @@ uv run inference.py inference.output_file="my_submission.csv"
 - **`feature/ensemble`**: 최종 성능 향상을 위해 **Ensemble** 방식을 고안하여 적용했습니다.
     - **사용 모델**: 총 6개의 모델 csv 결과 활용 (최고 성능 모델 `0.7828`, 전문가 모델 `0.7791` 포함)
     - **알고리즘 (Logic)**:
-        1. **Macjority Vote (>=4)**: 6개 모델 중 4개 이상이 동일한 답을 선택하면 해당 답안 채택
+        1. **Majority Vote (>=4)**: 6개 모델 중 4개 이상이 동일한 답을 선택하면 해당 답안 채택
         2. **Model Agreement**: 최상위 성능 모델(Strongest)과 전문가 모델(Expert)의 답이 일치하면 채택
         3. **Fallback**: 위 조건 만족 불가 시, 최상위 성능 모델의 답안 선택
 
