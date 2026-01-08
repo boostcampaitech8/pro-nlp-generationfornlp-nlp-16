@@ -1,6 +1,6 @@
 # CSAT-Solver: Korean SAT Solver
 
-## 프로젝트 개요
+## 📌 프로젝트 개요
 
 > "AI는 과연 수능 문제를 풀 수 있을까요?”
 
@@ -12,7 +12,7 @@
 
 <br>
 
-## 최종 결과
+## 🎖️ 최종 결과
 ![alt text](<./assets/leaderboard_result.png>)
 
 `Qwen2.5-32B` 모델을 활용하여 **0.7370의 정확도**를 달성하였습니다. 데이터 증강 및 추출을 통해 도메인 특화 데이터셋을 구축하여 학습하였으며, 앙상블 및 고난이도 문제 재추론을 위한 Selective Inference, 그리고 MoA 전략을 결합하여 정답 도출의 정확도를 확보하였습니다.
@@ -50,7 +50,7 @@
 
 <br>
 
-## 팀 소개 & 역할
+## 🤝 팀 소개 & 역할
 
 | 프로필 | 이름 | 역할 |
 | :---: | :---: | :--- |
@@ -62,14 +62,14 @@
 
 <br>
 
-## Wrap-Up Report
+## 📄 Wrap-Up Report
 
 ### [NLP16_리포트.pdf](./assets/NLP16_CSAT_Report.pdf)
 > 데이터 EDA부터 앙상블까지 프로젝트 전반의 회고는 랩업 리포트를 통해 확인할 수 있습니다.
 
 <br>
 
-## 개발 환경 및 설치 (Installation)
+## 🛠️ 개발 환경 및 설치 (Installation)
 
 ### 요구 사항 (Requirements)
 본 프로젝트는 **Python 3.10** 환경에서 구동됩니다.
@@ -89,7 +89,7 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 <br>
 
-## 패키지 구조 (Project Structure)
+## 📁 패키지 구조 (Project Structure)
 Hydra 기반의 구조화된 프로젝트 구성을 따르고 있습니다.
 
 ```
@@ -113,7 +113,7 @@ korean_sat/
 
 <br>
 
-## 주요 라이브러리 (Main Libraries)
+## 📚 주요 라이브러리 (Main Libraries)
 핵심적으로 사용된 라이브러리와 버전 정보입니다. (`pyproject.toml` 기준)
 
 | 라이브러리 | 역할 | 버전(최소) |
@@ -129,7 +129,7 @@ korean_sat/
 
 <br>
 
-## 세부일정 (Schedule)
+## 🗓️ 세부일정 (Schedule)
 **프로젝트 기간:** 2025.12.15(월) ~ 2026.01.06(화) (3주)
 
 | 주차 | 기간 | 주요 활동 |
@@ -140,7 +140,7 @@ korean_sat/
 
 <br>
 
-## 사용법 (Usage)
+## 📖 사용법 (Usage)
 본 프로젝트는 **Hydra**를 사용하여 설정을 관리하며, `uv run`을 통해 스크립트를 실행하는 것을 권장합니다.
 
 ### 학습 (Training)
@@ -169,7 +169,10 @@ uv run inference.py inference.output_file="my_submission.csv"
 ```
 <br>
 
-## 시도한 것들
+## 🧪 시도한 것들
+성능 향상을 위해 데이터 엔지니어링, 학습 최적화, 고도화된 추론 전략 등 다각도의 **기술적 기능(Features)** 을 구현하고 브랜치별로 관리하였습니다. 또한 최적의 베이스 모델을 선정하기 위해 다양한 아키텍처와 파라미터 규모를 가진 모델들을 대상으로 **비교 실험(Experiments)** 을 수행하며 최적의 조합을 도출했습니다.
+
+각 기능 및 실험의 요약은 아래 테이블에서 확인 가능하며 각 브랜치의 링크가 연결되어있습니다. 상세 구현 내용은 하단의 'Branch 상세 설명' 토글을 참고해 주시기 바랍니다.
 
 ### Features
 
@@ -280,7 +283,7 @@ uv run inference.py inference.output_file="my_submission.csv"
 
 <br>
 
-## References
+## 🔗 References
 - AI, 수능에 도전하다: KoNET
     - [https://clova.ai/tech-blog/ai-수능에-도전하다-konet](https://clova.ai/tech-blog/ai-%EC%88%98%EB%8A%A5%EC%97%90-%EB%8F%84%EC%A0%84%ED%95%98%EB%8B%A4-konet)
 - Mixture-of-agents enhances large language model capabilities (Wang, L., et al., 2024)
