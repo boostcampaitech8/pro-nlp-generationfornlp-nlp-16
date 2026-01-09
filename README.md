@@ -18,28 +18,8 @@ MoA(Mixture-of-Agents) 계열 선행 연구에 따르면,
 계산 자원 효율성과 실제 활용 가능성을 고려하여 소형 모델(sktAX-4.0-light)을 전처리 단계에 배치하는 식으로 구성하였다.
 
 ## 전체 파이프라인 구조
-```
-  [AIHub 국어 문제 데이터]
-          │
-          ▼
-      [DAPT 학습]
-  (sktAX 도메인 적응)
-          │
-          ▼
-      [입력 문제]
-          │
-          ▼
-  [sktAX-4.0-light (DAPT)]
-(필터링 · 요약 · 근거 정리)
-          │ └─ 지문과 선택지 연관성 정리
-          │ └─ 문제 풀이 관점 제시
-          ▼
-   [EXAONE-4.0-32B]
-      (최종 추론기)
-          │
-          ▼
-      [정답 선택]
-```
+
+![MoA_structure](./assets/moa_structure.png)
 
 ## 프로젝트 파일 구조
 ```
@@ -285,5 +265,42 @@ uv run inference_pipeline.py pipeline.mode=description   # description만 생성
 uv run inference_pipeline.py pipeline.mode=inference     # description 건너뛰고 EXAONE만 실행
 ```
 
+## 결과
+1. Vanila EXAONE-4.0-32b 추론 결과
+
+![EXAONE-4-32b-baseline](./assets/exaone_32b_baseline.png)
+
+- MoA 적용 결과와의 비교를 위한 vanilla EXAONE-4.0-32B 단독 추론 결과
+- Reasoning 설정은 Non-reasoning 대비 Public에서 0.614 → 0.718, Private에서 0.553 → 0.667로 유의미한 성능 향상도 확인하였다.
+
+2. DAPT train/loss
+
+![dapt_train_loss](./assets/dapt_train_loss.png)
+
+- Train loss는 약 2.7 → 1.0으로 감소하며, 초기 300 step 내 급격한 하락 이후 600 step 전후부터 감소 폭이 거의 수렴하는 형태를 보인다.
+- 도메인 분포 적응이 초반에 대부분 완료되었고, 이후 학습은 미세 조정 과정으로 볼 수 있을 것 같다.
+- 따라서, DAPT가 충분히 수행되었다고 판단하고, 해당 체크포인트를 기준으로 downstream task를 진행하였다.
+
+3. sktAX model이 생성한 근거 및 관점
+
+![description_from_dapt_model](./assets/description_from_dapt_model.png)
+
+- sktAX 생성 결과 지문과 선택지 간의 핵심 관계를 정리하여 문제 풀이에 필요한 근거와 풀이 관점을 제공하는 것을 확인하였다.
+
+4. 예측 불확실성이 높았던 문제 subset을 대상으로 MoA 파이프라인 시도 결과
+
+![moa_result](./assets/moa_results.png)
+
+- 37·64 selected 설정은 모두 예측 불확실성이 높은 문제 subset에 한해 MoA 추론 결과로 soft voting 출력을 교체한 실험
+- **Public 기준에서는 일관된 성능 향상**을 보였으며, **Private 기준에서는 설정에 따라 성능 안정화 또는 개선 효과**를 보였다.
+- 특히 64 selected 설정은 Public·Private 모두에서 **기존 soft-voting의 결과 대비 경쟁력 있는 성능**을 보여주었다.
+- MoA 구조가 정답 선택의 안정성과 일관성에 기여할 수 있음을 확인할 수 있었다.
+
+
+
 ## 참고사항
-Paper: [Mixture-of-Agents Enhances Large Language Model Capabilities](https://arxiv.org/abs/2406.04692)
+Paper: 
+
+- Wang, Y., Li, Y., Zhang, H., Chen, J., Liu, X., & Wang, Y. (2024). Mixture-of-Agents enhances large language model capabilities. arXiv preprint [arXiv:2406.04692.](https://arxiv.org/abs/2406.04692)
+
+- Gururangan, S., Marasović, A., Swayamdipta, S., Lo, K., Beltagy, I., Downey, D., & Smith, N. A. (2020). Don’t stop pretraining: Adapt language models to domains and tasks. arXiv preprint [arXiv:2004.10964.](https://arxiv.org/abs/2004.10964)
