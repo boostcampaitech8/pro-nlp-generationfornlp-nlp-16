@@ -1,0 +1,90 @@
+# llama.cpp
+llama.cpp/
+llama.cpp/build/
+llama.cpp/*.gguf
+llama.cpp/*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific - Data & Models
+outputs/
+logs/
+cache/
+tmp/
+data/
+data
+models/
+
+# src 하위의 data, models는 추적
+!src/data/
+!src/models/
+
+# conf 하위의 moa/data는 설정 파일이므로 추적
+!conf/moa/data/
+
+# Artifacts
+*.ckpt
+*.pt
+*.bin
+*.arrow
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/
+# *.ipynb
+
+# Misc
+nohup.out
+*/nohup.out
+.env
+.env.local
+
+# Model files 
+*.safetensors
+
+# Data files 
+*.csv
+
+# Hydra
+multirun/
+.hydra/
+
+# HuggingFace cache
+.cache/

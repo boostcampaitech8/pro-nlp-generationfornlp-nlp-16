@@ -1,0 +1,38 @@
+# EXAONE 추론 설정
+
+# API 설정
+api_base_url: "http://localhost:8000/v1"
+api_key: "sk-no-key-required"
+model_name: "EXAONE-4.0-32B"
+
+# 출력 설정
+output_dir: "outputs/moa"
+output_csv: "TestSet_Inference_EXAONE-4.0-32B.csv"
+submission_csv: "submission.csv"
+detailed_results_json: "detailed_results.json"
+
+# 생성 파라미터
+generation:
+  max_tokens: 8192
+  temperature: 0.7
+  top_p: 0.95
+  seed: 0
+
+# 처리 설정
+processing:
+  save_frequency: 5              # N개 샘플마다 중간 결과 저장
+  delay_before_start: 5          # 시작 전 대기 시간 (초) - 서버 워밍업용
+  delay_after_end: 5             # 종료 후 대기 시간 (초)
+
+# 다수결 투표 설정
+# 동점일 경우 우선시할 모드 (0, 1, 2 중 선택)
+# 0: EXAONE만 (reasoning)
+# 1: EXAONE + descriptions (reasoning)
+# 2: EXAONE + descriptions (non-reasoning)
+voting:
+  tie_break_priority: 1
+
+# 디버그 설정
+debug:
+  enabled: false
+  sample_limit: 5                # 디버그 모드에서 처리할 샘플 개수

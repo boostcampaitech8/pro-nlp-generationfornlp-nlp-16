@@ -1,0 +1,306 @@
+# MoA(Mixture-of-Agents) 기반 수능형 문제 추론 파이프라인
+
+소형 모델이 지문 정보를 정제·요약·필터링하고
+대형 추론 특화 모델이 해당 정보만을 활용해 최종 정답을 선택하는
+다단계(MoA) 추론 파이프라인을 구현 
+
+## 핵심 아이디어
+지문 + 문제 + 선택지만 대형 모델에 입력하는 대신,
+문제 해결 및 reasoning 과정에 도움이 되는 관점이나 정보를 같이 제공하면
+정답률(Accuracy) 향상을 기대할 수 있을 것이다.
+
+MoA(Mixture-of-Agents) 계열 선행 연구에 따르면,
+전단(pre-agent) 모델의 절대 성능이 낮더라도,
+그 출력이 정보를 정제·구조화하는 역할을 수행할 경우
+후단 aggregator 모델의 추론 성능은 유의미하게 향상될 수 있음이 보고되었다.
+
+따라서, 보조 정보를 제공하는 모델로 더 큰 모델에서 생성할 수도 있으나,
+계산 자원 효율성과 실제 활용 가능성을 고려하여 소형 모델(sktAX-4.0-light)을 전처리 단계에 배치하는 식으로 구성하였다.
+
+## 전체 파이프라인 구조
+
+![MoA_structure](./assets/moa_structure.png)
+
+## 프로젝트 파일 구조
+```
+korean_sat_solver/
+├── conf
+│   ├── config.yaml              # 메인 설정 파일
+│   ├── moa_config.yaml          # MoA 파이프라인 메인 설정
+│   ├── dapt
+│   │   ├── config.yaml          # DAPT 메인 설정
+│   │   ├── model.yaml           # DAPT 모델 설정
+│   │   └── training.yaml        # DAPT 학습 파라미터
+│   ├── moa                      # MoA 파이프라인 설정
+│   │   ├── data/
+│   │   │   └── default.yaml     # MoA 데이터 설정
+│   │   ├── description/
+│   │   │   └── default.yaml     # Description 생성 설정
+│   │   ├── exaone/
+│   │   │   └── default.yaml     # EXAONE 추론 설정
+│   │   └── pipeline/
+│   │       └── default.yaml     # 파이프라인 실행 설정
+│   └── inference
+│       └── default.yaml
+├── src
+│   ├── dapt                     # DAPT 학습 모듈
+│   │   ├── dataset.py           # DAPT 데이터셋 처리
+│   │   └── trainer.py           # DAPT 학습 유틸리티
+│   ├── data
+│   │   ├── dataset.py           # 데이터셋 로드 및 전처리
+│   │   ├── description.py       # Description 유틸리티
+│   │   └── preprocessing.py     # 데이터 전처리
+│   ├── inference
+│   │   ├── description_prompt.py    # Description 프롬프트
+│   │   ├── exaone_prompts.py        # EXAONE 프롬프트 템플릿
+│   │   └── generate_description.py  # Description 생성 로직
+│   ├── model 
+│   │   └── model.py
+│   └── utils
+│       └── seed.py
+├── models
+│   └── EXAONE-4.0-32B-Q5_K_M.gguf  # EXAONE 양자화 모델
+├── notebook
+├── outputs                      # 출력 결과 디렉토리
+│   ├── dapt                     # DAPT 학습 체크포인트 및 로그
+│   │   └── 2026-01-04
+│   ├── inference_description    # Description 생성 결과
+│   └── moa                      # MoA 파이프라인 최종 추론 결과
+│       ├── TestSet_Inference_EXAONE-4.0-32B.csv  # 중간 추론 결과
+│       └── submission.csv       # 최종 제출 파일
+├── data
+│   └── descriptions.json        # MoA에서 사용하는 description 데이터
+├── llama.cpp                    # llama.cpp 라이브러리
+├── train_dapt.py                # DAPT 학습 실행 스크립트
+├── inference.py                 # 기본 추론 스크립트
+├── inference_description.py     # Description 생성 스크립트
+├── inference_exaone.py          # EXAONE 추론 스크립트
+├── inference_pipeline.py        # 전체 MoA 파이프라인 실행
+├── README.md                    # 프로젝트 문서
+├── pyproject.toml               # Python 프로젝트 설정
+├── requirements.txt             # Python 의존성 목록
+└── uv.lock                      # uv 패키지 잠금 파일
+```
+
+## 모듈 설명
+
+### 학습 모듈
+
+1. **train_dapt.py** - DAPT (Domain-Adaptive Pre-Training) 학습
+   - sktAX 모델을 국어 문제 도메인에 적응시키는 사전 학습
+   - Causal Language Modeling (CLM) 방식
+   - LoRA를 사용한 파라미터 효율적 학습 (기본값)
+   - 설정: `conf/dapt/config.yaml`
+
+2. **src/dapt/dataset.py** - DAPT 데이터 처리
+   - AIHub 국어 문제 데이터 로드 및 전처리
+   - 지문, 선택지, 해설을 연속 텍스트로 변환
+   - 토크나이징 및 train/eval 분할
+
+3. **src/dapt/trainer.py** - DAPT 학습 유틸리티
+   - 모델/토크나이저 로드
+   - LoRA 적용
+   - Trainer 생성
+
+### 추론 모듈
+
+1. **inference_pipeline.py** - 통합 파이프라인
+   - Step 1: description 생성 (inference_description.py 실행)
+   - Step 2: EXAONE 추론 (inference_exaone.py 실행)
+
+2. **inference_description.py** - Description 생성
+   - sktAX 모델로 테스트 문제 분석 힌트 생성
+   - 체크포인트 자동 탐색 (outputs/dapt, outputs/train)
+
+3. **inference_exaone.py** - 최종 추론
+   - 3가지 모드로 추론 후 다수결 투표:
+     - EXAONE만 (reasoning, descriptions 없이)
+     - EXAONE + descriptions (reasoning)
+     - EXAONE + descriptions (non-reasoning)
+   - 결과 저장: outputs/moa/submission.csv
+
+4. **src/data/description.py** - Description 유틸리티
+   - load_descriptions_json(): descriptions.json 로드
+   - save_descriptions(): description 결과 저장
+
+5. **src/inference/** - Inference 모듈
+   - generate_description.py: description 생성 로직
+   - exaone_prompts.py: EXAONE 프롬프트 템플릿
+
+## 설치 및 환경 설정
+
+### 자동 설정
+
+- `setup.sh` 스크립트로 환경을 자동 설정합니다.
+```bash
+bash setup.sh
+```
+
+### 수동 설정
+
+1. 작업 공간 및 캐시 경로 설정
+
+```bash
+# 작업 공간 설정
+WORK_DIR="/data/ephemeral/home/workspace"
+mkdir -p "$WORK_DIR"
+cd "$WORK_DIR"
+
+# 임시 파일 경로 설정
+export TMPDIR="/data/ephemeral/tmp"
+mkdir -p "$TMPDIR"
+export TEMP="$TMPDIR"
+export TMP="$TMPDIR"
+
+# 캐시 경로 설정
+export XDG_CACHE_HOME="/data/ephemeral/home/shared/cache"
+export PIP_CACHE_DIR="/data/ephemeral/home/shared/cache/pip"
+export UV_CACHE_DIR="/data/ephemeral/home/shared/cache/uv"
+export HF_HOME="/data/ephemeral/home/shared/cache/huggingface"
+
+# 캐시 디렉토리 생성
+mkdir -p "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$UV_CACHE_DIR" "$HF_HOME"
+```
+
+2.  CUDA Toolkit 설치
+
+```bash
+# CUDA 12.2 다운로드 및 설치
+cd workspace
+wget https://developer.download.nvidia.com/compute/cuda/12.2.0/local_installers/cuda_12.2.0_535.54.03_linux.run
+chmod +x cuda_12.2.0_535.54.03_linux.run
+sh cuda_12.2.0_535.54.03_linux.run --silent --toolkit
+
+# 심볼릭 링크 생성
+ln -sf /usr/local/cuda-12.2 /usr/local/cuda
+
+# 환경 변수 설정
+export PATH="/usr/local/cuda/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+export CUDACXX="/usr/local/cuda/bin/nvcc"
+```
+
+3. python 환경
+
+```bash
+uv sync
+```
+
+4. llama.cpp 빌드
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+rm -rf build
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j 6
+```
+
+
+## 사용법
+
+### 모델 학습
+
+#### DAPT (Domain-Adaptive Pre-Training)
+
+sktAX 모델을 국어 문제 도메인에 적응시키는 사전 학습:
+
+```bash
+uv run train_dapt.py
+```
+
+**설정 파일**: `conf/dapt/config.yaml`
+- 모델: `skt/A.X-4.0-Light`
+- 데이터: `data/aihub_workbook_final.csv`
+- 학습 방식: LoRA (기본값)
+- 출력: `outputs/dapt/YYYY-MM-DD/HH-MM-SS/`
+
+**주요 설정**:
+- `max_length: 1024` (메모리 최적화)
+- `gradient_accumulation_steps: 16`
+- `gradient_checkpointing: true`
+- `fp16: true`
+
+학습된 모델은 `inference_description.py`에서 자동으로 탐색되어 사용됩니다.
+
+### 추론 파이프라인
+
+1. 모델 다운로드
+
+```bash
+cd workspace 
+
+uv run python -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='LGAI-EXAONE/EXAONE-4.0-32B-GGUF',
+    filename='EXAONE-4.0-32B-Q4_K_M.gguf',
+    local_dir='./models',
+    local_dir_use_symlinks=False
+)
+"
+```
+
+2. 추론 엔진 실행
+
+- EXAONE 4.0 32B 서버 실행 
+
+```bash
+./llama.cpp/build/bin/llama-server \
+  -m ./models/EXAONE-4.0-32B-Q5_K_M.gguf \
+  -c 32768 \
+  -np 4 \
+  -ngl 20 \
+  -fa on \
+  --ctx-size 32768 \
+  --port 8000 \
+  --host 0.0.0.0
+```
+
+3. 추론 진행
+
+```bash
+uv run inference_pipeline.py                             # 전체 파이프라인 실행
+uv run inference_pipeline.py pipeline.mode=description   # description만 생성
+uv run inference_pipeline.py pipeline.mode=inference     # description 건너뛰고 EXAONE만 실행
+```
+
+## 결과
+1. Vanila EXAONE-4.0-32b 추론 결과
+
+![EXAONE-4-32b-baseline](./assets/exaone_32b_baseline.png)
+
+- MoA 적용 결과와의 비교를 위한 vanilla EXAONE-4.0-32B 단독 추론 결과
+- Reasoning 설정은 Non-reasoning 대비 Public에서 0.614 → 0.718, Private에서 0.553 → 0.667로 유의미한 성능 향상도 확인하였다.
+
+2. DAPT train/loss
+
+![dapt_train_loss](./assets/dapt_train_loss.png)
+
+- Train loss는 약 2.7 → 1.0으로 감소하며, 초기 300 step 내 급격한 하락 이후 600 step 전후부터 감소 폭이 거의 수렴하는 형태를 보인다.
+- 도메인 분포 적응이 초반에 대부분 완료되었고, 이후 학습은 미세 조정 과정으로 볼 수 있을 것 같다.
+- 따라서, DAPT가 충분히 수행되었다고 판단하고, 해당 체크포인트를 기준으로 downstream task를 진행하였다.
+
+3. sktAX model이 생성한 근거 및 관점
+
+![description_from_dapt_model](./assets/description_from_dapt_model.png)
+
+- sktAX 생성 결과 지문과 선택지 간의 핵심 관계를 정리하여 문제 풀이에 필요한 근거와 풀이 관점을 제공하는 것을 확인하였다.
+
+4. 예측 불확실성이 높았던 문제 subset을 대상으로 MoA 파이프라인 시도 결과
+
+![moa_result](./assets/moa_results.png)
+
+- 37·64 selected 설정은 모두 예측 불확실성이 높은 문제 subset에 한해 MoA 추론 결과로 soft voting 출력을 교체한 실험
+- **Public 기준에서는 일관된 성능 향상**을 보였으며, **Private 기준에서는 설정에 따라 성능 안정화 또는 개선 효과**를 보였다.
+- 특히 64 selected 설정은 Public·Private 모두에서 **기존 soft-voting의 결과 대비 경쟁력 있는 성능**을 보여주었다.
+- MoA 구조가 정답 선택의 안정성과 일관성에 기여할 수 있음을 확인할 수 있었다.
+
+
+
+## 참고사항
+Paper: 
+
+- Wang, Y., Li, Y., Zhang, H., Chen, J., Liu, X., & Wang, Y. (2024). Mixture-of-Agents enhances large language model capabilities. arXiv preprint [arXiv:2406.04692.](https://arxiv.org/abs/2406.04692)
+
+- Gururangan, S., Marasović, A., Swayamdipta, S., Lo, K., Beltagy, I., Downey, D., & Smith, N. A. (2020). Don’t stop pretraining: Adapt language models to domains and tasks. arXiv preprint [arXiv:2004.10964.](https://arxiv.org/abs/2004.10964)

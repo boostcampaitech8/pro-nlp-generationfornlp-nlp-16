@@ -1,0 +1,18 @@
+# 파이프라인 제어 설정
+
+# 실행 모드
+# "full": description 생성 + EXAONE 추론 모두 실행 (기본값)
+# "description": description 생성만 실행하고 종료
+# "inference": description 건너뛰고 EXAONE 추론만 실행
+mode: "full"
+
+# 출력 파일 검증
+verify_outputs: true         # 각 단계 후 출력 파일 존재 여부 확인
+required_outputs:
+  description:
+    - "descriptions.csv"
+    - "data/descriptions.json"
+  exaone:
+    - "outputs/moa/TestSet_Inference_EXAONE-4.0-32B.csv"
+    - "outputs/moa/submission.csv"
+    - "outputs/moa/detailed_results.json"

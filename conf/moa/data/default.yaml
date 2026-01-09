@@ -1,0 +1,10 @@
+# 데이터 경로 설정
+# 모든 MoA 스크립트의 데이터 경로 중앙 관리
+
+# 입력 데이터
+test_path: "data/test.csv"
+train_path: "data/train.csv"
+
+# 중간 출력
+descriptions_csv: "descriptions.csv"
+descriptions_json: "data/descriptions.json"

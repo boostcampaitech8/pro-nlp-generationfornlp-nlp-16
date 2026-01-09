@@ -1,0 +1,21 @@
+# Description 생성 추론 설정
+
+# 체크포인트 경로 (비워두면 최신 DAPT 모델 자동 탐지)
+checkpoint_dir: ""
+checkpoint_step: "best"  # "best" 또는 특정 step 번호
+
+# 출력 파일
+description_output_csv: "descriptions.csv"
+description_output_json: "descriptions.json"
+
+# 모델 dtype
+torch_dtype: "float16"
+
+# 생성 파라미터
+generation:
+  max_new_tokens: 250          # Description 길이 (장황함 방지를 위해 400에서 감소)
+  do_sample: true              # 다양성을 위한 샘플링 사용
+  temperatures: [0.3, 0.7]     # 집중된 출력을 위한 낮은 temperature
+  top_p: 0.85                  # Nucleus 샘플링 (0.9에서 감소)
+  top_k: 40                    # Top-k 샘플링
+  repetition_penalty: 1.3      # 반복 방지 페널티 강화
