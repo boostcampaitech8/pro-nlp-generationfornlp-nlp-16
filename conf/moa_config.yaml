@@ -1,10 +1,10 @@
 # MoA (Mixture of Agents) 파이프라인 설정
 
 defaults:
-  - moa/pipeline: default
-  - moa/description: default
-  - moa/exaone: default
-  - moa/data: default
+  - moa/pipeline@pipeline: default
+  - moa/description@description: default
+  - moa/exaone@exaone: default
+  - moa/data@data: default
   - _self_
 
 # Hydra 런타임 설정
