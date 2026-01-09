@@ -161,3 +161,22 @@ uv run run_gpt_api_finetuning.py
 ```bash
 jupyter notebook notebook/combine_data.ipynb
 ```
+
+## 결과
+1. fine-tuning 없이 few-shot prompt로 생성
+![data_aug_from_newsource_prompt](./assets/data_aug_news.png)
+- 뉴스 기사 기반으로 생성한 데이터 
+![data_aug_from_booksource_prompt](./assets/data_aug_book.png)
+- 도서 기반으로 생성한 데이터
+
+2. 국어 교과 지문형 데이터로 fine-tuning 후 생성
+![fine-tuning_train_loss](./assets/fine-tuning_train_loss.png)
+- Accuracy는 초기부터 높은 수준을 유지하며 큰 변동 없이 안정적으로 수렴함
+Loss는 전반적으로 낮은 값에서 유지되며 학습 발산 없이 안정적인 수렴 양상을 보임
+![data_aug_from_ft_model](./assets/data_aug_finetuning.png)
+- 질문에서는 “<보기>를 참고하여”와 같은 표현이 포함되었음에도 불구하고, 실제 출력에서는 <보기>가 생성되지 않음
+- 파인튜닝이 <보기>가 포함된 문제의 표면적 형식에는 익숙해졌으나, <보기>를 독립적인 정보 단위로 생성해야 하는 조건부 출력 구조까지는 충분히 학습하기는 어렵다고 판단하여 해당 방식으로 생성한 데이터는 사용하지 않음
+
+3. 생성 데이터를 포함한 학습 후 추론 결과
+![data_results](./assets/data_result.png)
+- Public Score는 약 0.04p, Private Score는 약 0.06p 일관된 성능 향상 확인
