@@ -1,0 +1,18 @@
+# MoA (Mixture of Agents) 파이프라인 설정
+
+defaults:
+  - moa/pipeline: default
+  - moa/description: default
+  - moa/exaone: default
+  - moa/data: default
+  - _self_
+
+# Hydra 런타임 설정
+hydra:
+  run:
+    dir: outputs/moa/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/moa/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  job:
+    chdir: false  # 중요: subprocess 실행을 위해 현재 작업 디렉토리 유지
