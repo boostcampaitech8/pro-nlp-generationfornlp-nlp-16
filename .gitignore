@@ -56,6 +56,9 @@ models/
 !src/data/
 !src/models/
 
+# conf 하위의 moa/data는 설정 파일이므로 추적
+!conf/moa/data/
+
 # Artifacts
 *.ckpt
 *.pt
