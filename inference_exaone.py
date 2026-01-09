@@ -7,6 +7,8 @@ import os
 import sys
 import json
 from collections import Counter
+import hydra
+from omegaconf import DictConfig
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -23,7 +25,7 @@ console = Console()
 
 
 # Async inference functions
-async def get_inference(client, system_msg, user_content, seed):
+async def get_inference(client, system_msg, user_content, seed, cfg: DictConfig):
     """
     Inference 실행하고 content와 reasoning_content를 모두 반환
     
@@ -32,14 +34,14 @@ async def get_inference(client, system_msg, user_content, seed):
     """
     try:
         response = await client.chat.completions.create(
-            model="EXAONE-4.0-32B",
+            model=cfg.exaone.model_name,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_content},
             ],
-            max_tokens=8192,  # Reduced to encourage concise answers
-            temperature=0.7,  # Reduced for more focused responses
-            top_p=0.95,
+            max_tokens=cfg.exaone.generation.max_tokens,
+            temperature=cfg.exaone.generation.temperature,
+            top_p=cfg.exaone.generation.top_p,
             seed=seed,
         )
         msg = response.choices[0].message
@@ -59,7 +61,7 @@ async def get_inference(client, system_msg, user_content, seed):
         return "Error", None
 
 
-async def process_row(client, descriptions_dict, index, row, seed):
+async def process_row(client, descriptions_dict, index, row, seed, cfg: DictConfig):
     """
     3가지 모드로 추론:
     1. EXAONE만 (reasoning + descriptions 없이)
@@ -86,7 +88,7 @@ async def process_row(client, descriptions_dict, index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(client, SYSTEM_PROMPT_BASIC, user_content_1, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_BASIC, user_content_1, seed, cfg))
 
     # 모드 2: EXAONE + descriptions (reasoning + SKT A.X descriptions)
     user_content_2 = create_user_prompt_with_descriptions(
@@ -99,7 +101,7 @@ async def process_row(client, descriptions_dict, index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA, user_content_2, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA, user_content_2, seed, cfg))
 
     # 모드 3: EXAONE + descriptions (non-reasoning + SKT A.X descriptions)
     user_content_3 = create_user_prompt_with_descriptions(
@@ -112,7 +114,7 @@ async def process_row(client, descriptions_dict, index, row, seed):
             row["question_plus"] if pd.notna(row["question_plus"]) else None
         ),
     )
-    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA_NON_REASONING, user_content_3, seed))
+    tasks.append(get_inference(client, SYSTEM_PROMPT_MOA_NON_REASONING, user_content_3, seed, cfg))
 
     results = await asyncio.gather(*tasks)
     
@@ -123,16 +125,16 @@ async def process_row(client, descriptions_dict, index, row, seed):
     return index, contents, reasoning_contents
 
 
-async def main(df_test, descriptions_dict, client):
+async def main_async(df_test, descriptions_dict, client, cfg: DictConfig):
     console.print(Panel.fit(
-        "[bold green]Starting Inference with EXAONE-4.0-32B[/bold green]",
+        f"[bold green]Starting Inference with {cfg.exaone.model_name}[/bold green]",
         border_style="green"
     ))
 
     # Create output directory if it doesn't exist
-    output_dir = "outputs/moa"
+    output_dir = cfg.exaone.output_dir
     os.makedirs(output_dir, exist_ok=True)
-    output_csv_path = os.path.join(output_dir, "TestSet_Inference_EXAONE-4.0-32B.csv")
+    output_csv_path = os.path.join(output_dir, cfg.exaone.output_csv)
 
     with Progress(
         SpinnerColumn(),
@@ -145,7 +147,7 @@ async def main(df_test, descriptions_dict, client):
             task = progress.add_task(f"[cyan]Processing loop s={s}", total=len(df_test))
 
             for i in range(len(df_test)):
-                idx, results, reasoning_contents = await process_row(client, descriptions_dict, i, df_test.loc[i], s)
+                idx, results, reasoning_contents = await process_row(client, descriptions_dict, i, df_test.loc[i], s, cfg)
 
                 # 3가지 모드 결과 저장
                 # resp_0: EXAONE만 (reasoning + descriptions 없이)
@@ -161,7 +163,7 @@ async def main(df_test, descriptions_dict, client):
 
                 progress.update(task, advance=1, description=f"[cyan]Processing s={s}, sample {i+1}/{len(df_test)}")
 
-                if i % 5 == 4:
+                if i % cfg.exaone.processing.save_frequency == (cfg.exaone.processing.save_frequency - 1):
                     df_test.to_csv(output_csv_path, index=False)
 
             df_test.to_csv(output_csv_path, index=False)
@@ -224,17 +226,19 @@ async def main(df_test, descriptions_dict, client):
         top_choices = count_choices.most_common(2)
 
         try:
-            # 1:1:1 동점인 경우 (모든 모드가 다른 답변) mode_1 우선
+            # Tie-break priority (default: mode 1 = EXAONE_with_descriptions_reasoning)
+            priority_mode = list(mode_answers.values())[cfg.exaone.voting.tie_break_priority]
+
+            # 1:1:1 동점인 경우 (모든 모드가 다른 답변) priority mode 우선
             if len(count_choices) == 3 and all(count == 1 for count in count_choices.values()):
-                # 1:1:1 동점인 경우 mode_1의 답변을 우선시
-                answer = mode_answers["EXAONE_with_descriptions_reasoning"] or top_choices[0][0]
-            # 1:1 동점인 경우 (2가지 답변이 각각 1표씩) mode_1 우선
+                answer = priority_mode or top_choices[0][0]
+            # 1:1 동점인 경우 (2가지 답변이 각각 1표씩) priority mode 우선
             elif len(top_choices) >= 2 and top_choices[0][1] == top_choices[1][1] and top_choices[0][1] == 1:
-                # 동점인 경우 mode_1의 답변을 우선시
-                if mode_answers["EXAONE_with_descriptions_reasoning"] in [top_choices[0][0], top_choices[1][0]]:
-                    answer = mode_answers["EXAONE_with_descriptions_reasoning"]
+                # 동점인 경우 priority mode의 답변을 우선시
+                if priority_mode in [top_choices[0][0], top_choices[1][0]]:
+                    answer = priority_mode
                 else:
-                    # mode_1의 답변이 동점 후보에 없으면 첫 번째 선택
+                    # priority mode의 답변이 동점 후보에 없으면 첫 번째 선택
                     answer = top_choices[0][0]
             else:
                 # 동점이 아니면 가장 많이 선택된 답변
@@ -259,17 +263,18 @@ async def main(df_test, descriptions_dict, client):
         })
 
     df_submission = pd.DataFrame(submission_data)
-    
+
     # Create output directory if it doesn't exist
-    output_dir = "outputs/moa"
+    output_dir = cfg.exaone.output_dir
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Save submission.csv
-    df_submission.to_csv("outputs/moa/submission.csv", index=False)
-    console.print(f"[green]✓[/green] Submission 파일 생성 완료: [italic]outputs/moa/submission.csv[/italic]")
-    
+    submission_path = os.path.join(output_dir, cfg.exaone.submission_csv)
+    df_submission.to_csv(submission_path, index=False)
+    console.print(f"[green]✓[/green] Submission 파일 생성 완료: [italic]{submission_path}[/italic]")
+
     # Save detailed results as JSON
-    detailed_json_path = "outputs/moa/detailed_results.json"
+    detailed_json_path = os.path.join(output_dir, cfg.exaone.detailed_results_json)
     with open(detailed_json_path, 'w', encoding='utf-8') as f:
         json.dump(detailed_results, f, ensure_ascii=False, indent=2)
     console.print(f"[green]✓[/green] 상세 결과 JSON 파일 생성 완료: [italic]{detailed_json_path}[/italic]")
@@ -281,37 +286,50 @@ async def main(df_test, descriptions_dict, client):
     ))
 
 
-if __name__ == "__main__":
-    DESCRIPTIONS_PATH = "data/descriptions.json"
-    
+@hydra.main(version_base=None, config_path="conf", config_name="moa_config")
+def main(cfg: DictConfig):
+    """Hydra main function wrapper for async execution"""
+
     # 테스트 데이터 로드
-    df_test = pd.read_csv("./data/test.csv")
-    # 실사용시 주석처리! (디버그용)
-    # df_test = df_test.head(5).reset_index(drop=True)
-    
+    test_data_path = hydra.utils.to_absolute_path(cfg.data.test_path)
+    df_test = pd.read_csv(test_data_path)
+
+    # Debug 모드 처리
+    if cfg.exaone.debug.enabled:
+        df_test = df_test.head(cfg.exaone.debug.sample_limit).reset_index(drop=True)
+        console.print(f"[yellow]⚠  Debug 모드: {cfg.exaone.debug.sample_limit}개 샘플만 처리합니다.[/yellow]\n")
+
     console.print("\n")
     console.print(Panel.fit(
         "[bold cyan]EXAONE Inference with MoA (3-Mode Ensemble)[/bold cyan]",
         border_style="cyan"
     ))
-    
+
     # descriptions.json 로드
-    if not os.path.exists(DESCRIPTIONS_PATH):
-        console.print(f"[red]✗[/red] Description 파일을 찾을 수 없습니다: [italic]{DESCRIPTIONS_PATH}[/italic]")
+    descriptions_path = hydra.utils.to_absolute_path(cfg.data.descriptions_json)
+    if not os.path.exists(descriptions_path):
+        console.print(f"[red]✗[/red] Description 파일을 찾을 수 없습니다: [italic]{descriptions_path}[/italic]")
         console.print("[red]파이프라인을 중단합니다.[/red]")
         sys.exit(1)
-    
-    descriptions_dict = load_descriptions_json(DESCRIPTIONS_PATH)
-    
+
+    descriptions_dict = load_descriptions_json(descriptions_path)
+
     console.print("[bold yellow]3가지 모드로 추론합니다:[/bold yellow]")
     console.print("  1. EXAONE만 (reasoning + descriptions 없이)")
     console.print("  2. EXAONE + descriptions (reasoning + SKT A.X descriptions)")
     console.print("  3. EXAONE + descriptions (non-reasoning + SKT A.X descriptions)")
     console.print("  → 다수결로 최종 정답 선택\n")
-    
+
     # Initialize client
-    client = AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="sk-no-key-required")
-    
-    time.sleep(5)
-    asyncio.run(main(df_test, descriptions_dict, client))
-    time.sleep(5)
+    client = AsyncOpenAI(
+        base_url=cfg.exaone.api_base_url,
+        api_key=cfg.exaone.api_key
+    )
+
+    time.sleep(cfg.exaone.processing.delay_before_start)
+    asyncio.run(main_async(df_test, descriptions_dict, client, cfg))
+    time.sleep(cfg.exaone.processing.delay_after_end)
+
+
+if __name__ == "__main__":
+    main()

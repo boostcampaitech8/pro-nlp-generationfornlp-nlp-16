@@ -19,7 +19,7 @@ from src.data.description import save_descriptions
 console = Console()
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="conf", config_name="moa_config")
 def main(cfg: DictConfig):
     """
     description 생성 inference 전체 파이프라인을 실행하는 메인 함수
@@ -32,11 +32,11 @@ def main(cfg: DictConfig):
     ))
 
     # 1. 설정 및 경로 준비
-    checkpoint_path = cfg.inference.checkpoint_dir
-    checkpoint_step = cfg.inference.checkpoint_step
+    checkpoint_path = cfg.description.checkpoint_dir
+    checkpoint_step = cfg.description.checkpoint_step
     test_data_path = hydra.utils.to_absolute_path(cfg.data.test_path)
-    csv_output_path = cfg.inference.get("description_output_csv", "descriptions.csv")
-    json_output_path = cfg.inference.get("description_output_json", "descriptions.json")
+    csv_output_path = cfg.description.get("description_output_csv", "descriptions.csv")
+    json_output_path = cfg.description.get("description_output_json", "descriptions.json")
 
     original_cwd = hydra.utils.get_original_cwd()
 
@@ -120,7 +120,7 @@ def main(cfg: DictConfig):
         "[bold yellow]Loading Model & Tokenizer[/bold yellow]",
         border_style="yellow"
     ))
-    torch_dtype = cfg.inference.get("torch_dtype", "bfloat16")
+    torch_dtype = cfg.description.get("torch_dtype", "bfloat16")
     model, tokenizer = load_model_for_inference(
         checkpoint_path,
         torch_dtype=torch_dtype,
@@ -155,7 +155,7 @@ def main(cfg: DictConfig):
     console.print(f"[green]✓[/green] 총 {len(test_samples)}개의 샘플을 준비했습니다.")
 
     # 7. generation 설정
-    gen_cfg = cfg.inference.get("generation", {})
+    gen_cfg = cfg.description.get("generation", {})
     max_new_tokens = gen_cfg.get("max_new_tokens", 384)
     temperatures = gen_cfg.get("temperatures", [0.7])
     top_p = gen_cfg.get("top_p", 0.9)
