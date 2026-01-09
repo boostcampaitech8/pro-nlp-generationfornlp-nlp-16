@@ -45,16 +45,21 @@ MoA(Mixture-of-Agents) 계열 선행 연구에 따르면,
 korean_sat_solver/
 ├── conf
 │   ├── config.yaml              # 메인 설정 파일
+│   ├── moa_config.yaml          # MoA 파이프라인 메인 설정
 │   ├── dapt
 │   │   ├── config.yaml          # DAPT 메인 설정
 │   │   ├── model.yaml           # DAPT 모델 설정
 │   │   └── training.yaml        # DAPT 학습 파라미터
-│   ├── inference
-│   │   ├── default.yaml
-│   │   └── description.yaml     # Description 생성 설정
-│   ├── model
-│   │   └── sktAX.yaml           # sktAX 모델 설정
-│   └── training
+│   ├── moa                      # MoA 파이프라인 설정
+│   │   ├── data/
+│   │   │   └── default.yaml     # MoA 데이터 설정
+│   │   ├── description/
+│   │   │   └── default.yaml     # Description 생성 설정
+│   │   ├── exaone/
+│   │   │   └── default.yaml     # EXAONE 추론 설정
+│   │   └── pipeline/
+│   │       └── default.yaml     # 파이프라인 실행 설정
+│   └── inference
 │       └── default.yaml
 ├── src
 │   ├── dapt                     # DAPT 학습 모듈
@@ -80,7 +85,10 @@ korean_sat_solver/
 │   │   └── 2026-01-04
 │   ├── inference_description    # Description 생성 결과
 │   └── moa                      # MoA 파이프라인 최종 추론 결과
+│       ├── TestSet_Inference_EXAONE-4.0-32B.csv  # 중간 추론 결과
+│       └── submission.csv       # 최종 제출 파일
 ├── data
+│   └── descriptions.json        # MoA에서 사용하는 description 데이터
 ├── llama.cpp                    # llama.cpp 라이브러리
 ├── train_dapt.py                # DAPT 학습 실행 스크립트
 ├── inference.py                 # 기본 추론 스크립트
@@ -258,10 +266,11 @@ hf_hub_download(
 ```bash
 ./llama.cpp/build/bin/llama-server \
   -m ./models/EXAONE-4.0-32B-Q5_K_M.gguf \
-  -c 51000 \
-  -np 3 \
-  -cb \
+  -c 32768 \
+  -np 4 \
+  -ngl 20 \
   -fa on \
+  --ctx-size 32768 \
   --port 8000 \
   --host 0.0.0.0
 ```
@@ -269,9 +278,9 @@ hf_hub_download(
 3. 추론 진행
 
 ```bash
-uv run inference_pipeline.py                      # 전체 파이프라인 실행
-uv run inference_pipeline.py --skip-description   # description 건너뛰고 EXAONE만 실행
-uv run inference_pipeline.py --description-only   # description만 생성
+uv run inference_pipeline.py                             # 전체 파이프라인 실행
+uv run inference_pipeline.py pipeline.mode=description   # description만 생성
+uv run inference_pipeline.py pipeline.mode=inference     # description 건너뛰고 EXAONE만 실행
 ```
 
 ## 참고사항
