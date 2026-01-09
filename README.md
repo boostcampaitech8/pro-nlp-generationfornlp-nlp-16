@@ -13,24 +13,30 @@
 <br>
 
 ## 🎖️ 최종 결과
-![alt text](<./assets/leaderboard_result.png>)
+![alt text](<./assets/leaderboard_final_result.png>)
+*Figure 1. Final leaderboard result (Private Score)*
+![alt text](<./assets/leaderboard_intermediate_result.png>)
+*Figure 2. Intermediate leaderboard result (Public Score)*
 
-`Qwen2.5-32B` 모델을 활용하여 **0.7370의 정확도**를 달성하였습니다. 데이터 증강 및 추출을 통해 도메인 특화 데이터셋을 구축하여 학습하였으며, 앙상블 및 고난이도 문제 재추론을 위한 Selective Inference, 그리고 MoA 전략을 결합하여 정답 도출의 정확도를 확보하였습니다.
+`Qwen2.5-32B` 모델을 활용하여 **Public 기준 0.8073**의 정확도, **Private 기준 0.7370**의 정확도를 달성하였습니다. 데이터 증강 및 추출을 통해 도메인 특화 데이터셋을 구축하여 학습하였으며, 앙상블 및 고난이도 문제 재추론을 위한 Selective Inference, 그리고 MoA 전략을 결합하여 정답 도출의 정확도를 확보하였습니다.
 
-### 1. 모델
+### 주요 구현 사항 요약
+최고 성능을 달성한 최종 모델의 구성을 위해 설계된 핵심 아키텍처와 도메인 특화 데이터셋, 그리고 추론 전략의 요약 정보입니다.
+
+#### 1. 모델
 | 항목 | 내용 |
 | :--- | :--- |
 | **Base Model** | `unsloth/Qwen2.5-32B-Instruct-bnb-4bit` |
 | **MoA Model** | `skt/A.X-Light`, `EXAONE-4.0-light` |
 
-### 2. 학습 데이터셋
+#### 2. 학습 데이터셋
 | 분류 | 데이터셋 명칭 | 주요 포함 내용 |
 | :--- | :--- | :--- |
 | **기본 데이터** | KMMLU, MMMLU, KLUE MRC | 한국사, 고교 교과(역사·경제·정치·지리·심리), 도메인별 MRC |
 | **증강 데이터** | AI-Hub, 모두의 말뭉치 | 교과별 지문 및 문제, 학술논문, 신문·문어체 기반 증강 데이터 |
 | **추출 데이터** | 한국사 능력 검정 시험 | 한능검 기출문제 이미지 및 PDF 기반 추출 데이터 |
 
-### 3. 추론 전략
+#### 3. 추론 전략
 | 기법 | 설명 |
 | :--- | :--- |
 | **Ensemble** | 다양한 실험 브랜치 및 모델 결과값을 결합하여 정답률 극대화 |
@@ -64,7 +70,7 @@
 
 ## 📄 Wrap-Up Report
 
-### [NLP16_리포트.pdf](./assets/NLP16_CSAT_Report.pdf)
+### [NLP16_리포트.pdf](./assets/NLP16-generationForNLP-WrapupReport.pdf)
 > 데이터 EDA부터 앙상블까지 프로젝트 전반의 회고는 랩업 리포트를 통해 확인할 수 있습니다.
 
 <br>
@@ -136,7 +142,7 @@ korean_sat/
 |:---:|:---:|---|
 | **1주차** | 12.15 ~ 12.21 | • 부스트코스 강의 수강 (Generation for NLP)<br>• 베이스라인 코드 분석 및 모듈화 (Hydra 도입, 구조화) |
 | **2주차** | 12.22 ~ 12.28 | • 소형 모델 (7B~10B) 실험 및 성능 검증<br>• 프롬프트 엔지니어링 및 데이터 전처리 파이프라인 구축 |
-| **3주차** | 12.29 ~ 01.06 | • 대형 모델 (32B) 파인튜닝 (QLoRA) 및 최적화<br>• **ICL (In-Context Learning)** 및 **Reasoning** 기법 적용<br>• **MoA (Mixture of Agents)** 적용 실험<br>• 앙상블 및 최종 추론 |
+| **3주차** | 12.29 ~ 01.06 | • 대형 모델 (32B) 파인튜닝 (QLoRA) 및 최적화<br>• ICL (In-Context Learning) 및 Reasoning 기법 적용<br>• MoA (Mixture of Agents) 적용 실험<br>• 앙상블 및 최종 추론 |
 
 <br>
 
@@ -170,9 +176,9 @@ uv run inference.py inference.output_file="my_submission.csv"
 <br>
 
 ## 🧪 시도한 것들
-성능 향상을 위해 데이터 엔지니어링, 학습 최적화, 고도화된 추론 전략 등 다각도의 **기술적 기능(Features)** 을 구현하고 브랜치별로 관리하였습니다. 또한 최적의 베이스 모델을 선정하기 위해 다양한 아키텍처와 파라미터 규모를 가진 모델들을 대상으로 **비교 실험(Experiments)** 을 수행하며 최적의 조합을 도출했습니다.
+성능 향상을 위해 데이터 엔지니어링, 학습 최적화, 고도화된 추론 전략 등 다각도의 **기술적 기능(Features)** 을 구현하고 브랜치별로 관리하였습니다. 또한 베이스 모델을 선정하기 위해 다양한 아키텍처와 파라미터 규모를 가진 모델들을 대상으로 **비교 실험(Experiments)** 을 수행하며 최적의 조합을 도출했습니다.
 
-각 기능 및 실험의 요약은 아래 테이블에서 확인 가능하며 각 브랜치의 링크가 연결되어있습니다. 상세 구현 내용은 하단의 'Branch 상세 설명' 토글을 참고해 주시기 바랍니다.
+**본 섹션에는 최종 모델에 적용된 기법뿐만 아니라 실험 과정에서 시도했던 모든 유의미한 방법론들이 브랜치별로 보존되어 있습니다.** 상세 요약 및 브랜치 링크는 아래 테이블과 토글을 통해 확인하실 수 있습니다.
 
 ### Features
 
