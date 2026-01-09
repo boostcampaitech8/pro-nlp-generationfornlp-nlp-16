@@ -40,6 +40,7 @@ MoA(Mixture-of-Agents) 계열 선행 연구에 따르면,
           ▼
       [정답 선택]
 ```
+
 ## 프로젝트 파일 구조
 ```
 korean_sat_solver/
@@ -99,6 +100,7 @@ korean_sat_solver/
 ├── pyproject.toml               # Python 프로젝트 설정
 ├── requirements.txt             # Python 의존성 목록
 └── uv.lock                      # uv 패키지 잠금 파일
+```
 
 ## 모듈 설명
 
